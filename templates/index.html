@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Humiliation Categories</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body class="container mt-5">
+    <h1 class="mb-4">Humiliation Categories</h1>
+
+    <div class="mb-5">
+        <h2>Add Powerful Humiliation</h2>
+        <form id="powerForm" class="mb-3">
+            <div class="mb-3">
+                <label for="power_description" class="form-label">Description:</label>
+                <input type="text" id="power_description" name="description" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Add Powerful Humiliation</button>
+        </form>
+    </div>
+
+    <div class="mb-5">
+        <h2>Add Weak Humiliation</h2>
+        <form id="weakForm" class="mb-3">
+            <div class="mb-3">
+                <label for="weak_description" class="form-label">Description:</label>
+                <input type="text" id="weak_description" name="description" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-secondary">Add Weak Humiliation</button>
+        </form>
+    </div>
+
+    <a href="/page/1" class="btn btn-success">View All Humiliations</a>
+
+    <script>
+        // Обработчик для формы "Powerful Humiliation"
+        document.getElementById('powerForm').addEventListener('submit', async function (event) {
+            event.preventDefault(); // Предотвращение перезагрузки страницы
+            const description = document.getElementById('power_description').value;
+
+            try {
+                const response = await fetch('/power', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    Swal.fire('Success', result.message, 'success');
+                } else {
+                    Swal.fire('Error', result.error || 'Something went wrong', 'error');
+                }
+            } catch (error) {
+                Swal.fire('Error', 'Failed to send request', 'error');
+            }
+        });
+
+        // Обработчик для формы "Weak Humiliation"
+        document.getElementById('weakForm').addEventListener('submit', async function (event) {
+            event.preventDefault(); // Предотвращение перезагрузки страницы
+            const description = document.getElementById('weak_description').value;
+
+            try {
+                const response = await fetch('/weakness', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    Swal.fire('Success', result.message, 'success');
+                } else {
+                    Swal.fire('Error', result.error || 'Something went wrong', 'error');
+                }
+            } catch (error) {
+                Swal.fire('Error', 'Failed to send request', 'error');
+            }
+        });
+    </script>
+</body>
+</html>
