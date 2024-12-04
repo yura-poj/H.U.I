@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Ваши мета-теги и подключения стилей/скриптов -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Humiliation Categories</title>
@@ -22,6 +23,7 @@
             <button type="submit" class="btn btn-primary">Add Powerful Humiliation</button>
         </form>
     </div>
+
     <div class="mb-5">
         <h2>Add Weak Humiliation</h2>
         <form id="weakForm" class="mb-3">
@@ -50,6 +52,8 @@
                 const result = await response.json();
                 if (response.ok) {
                     Swal.fire('Success', result.message, 'success');
+                    // Очистка формы после успешной отправки
+                    document.getElementById('power_description').value = '';
                 } else {
                     Swal.fire('Error', result.error || 'Something went wrong', 'error');
                 }
@@ -72,6 +76,8 @@
                 const result = await response.json();
                 if (response.ok) {
                     Swal.fire('Success', result.message, 'success');
+                    // Очистка формы после успешной отправки
+                    document.getElementById('weak_description').value = '';
                 } else {
                     Swal.fire('Error', result.error || 'Something went wrong', 'error');
                 }

@@ -1,7 +1,17 @@
+import logging
 from flask import Flask, jsonify, render_template, request
+from flask.logging import create_logger
 from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
+
+logging.basicConfig(
+    level=logging.INFO,  # Логи будут выводиться на уровне INFO
+    handlers=[
+        logging.FileHandler("flask_requests.log"),  # Запись логов в файл
+        logging.StreamHandler()  # Вывод логов в консоль
+    ]
+)
 
 # Настройка строки подключения к базе данных PostgreSQL
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:2006yura@localhost/swears'
