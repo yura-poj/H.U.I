@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-labelledby="title desc">
+  <title id="title">Stone Giant</title>
+  <desc id="desc">Stone giant monster portrait</desc>
+  <rect width="320" height="320" rx="36" fill="#d7ded8"/>
+  <path d="M68 246c10-62 40-102 92-102s82 40 92 102c3 19-12 34-32 34H100c-20 0-35-15-32-34Z" fill="#7c8782"/>
+  <path d="M88 101 137 55h56l39 48 14 74-34 54H108l-36-56Z" fill="#8f9994"/>
+  <path d="m137 55 14 76-63-30ZM193 55l-42 76 81-28Z" fill="#747f79"/>
+  <path d="M111 145h50M177 145h50" stroke="#34413b" stroke-width="13" stroke-linecap="round"/>
+  <circle cx="137" cy="162" r="9" fill="#f1c04e"/>
+  <circle cx="201" cy="162" r="9" fill="#f1c04e"/>
+  <path d="M134 208h65" stroke="#34413b" stroke-width="14" stroke-linecap="round"/>
+  <path d="M100 119 73 86M219 117l34-30M153 75l-15-41M192 83l30-42" stroke="#6f7a75" stroke-width="12" stroke-linecap="round"/>
+  <path d="M105 240h110" stroke="#626d68" stroke-width="18" stroke-linecap="round"/>
+</svg>

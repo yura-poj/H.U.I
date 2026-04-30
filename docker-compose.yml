@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hui-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-monster_game}
+      POSTGRES_USER: ${POSTGRES_USER:-monster_game}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-monster_game_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-monster_game} -d ${POSTGRES_DB:-monster_game}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: hui-backend
+    environment:
+      FLASK_ENV: development
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monster_game:monster_game_password@postgres:5432/monster_game}
+    ports:
+      - "${BACKEND_PORT:-5001}:5000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: flask --app run.py run --host=0.0.0.0 --port=5000 --debug
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: hui-frontend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5001/api}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host=0.0.0.0 --port=5173
+
+volumes:
+  postgres_data:
+  frontend_node_modules:

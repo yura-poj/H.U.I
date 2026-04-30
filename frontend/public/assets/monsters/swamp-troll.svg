@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-labelledby="title desc">
+  <title id="title">Swamp Troll</title>
+  <desc id="desc">Green swamp troll monster portrait</desc>
+  <rect width="320" height="320" rx="36" fill="#b9d9c0"/>
+  <path d="M60 228c18-58 34-104 100-104s82 46 100 104c8 27-10 52-39 52H99c-29 0-47-25-39-52Z" fill="#4f9b65"/>
+  <path d="M82 136c8-54 42-88 78-88s70 34 78 88c8 57-26 107-78 107S74 193 82 136Z" fill="#5caf70"/>
+  <path d="M91 99 45 65l59 1ZM229 99l46-34-59 1Z" fill="#4c8c5b"/>
+  <circle cx="124" cy="143" r="18" fill="#f7f1cf"/>
+  <circle cx="196" cy="143" r="18" fill="#f7f1cf"/>
+  <circle cx="130" cy="148" r="8" fill="#17211c"/>
+  <circle cx="190" cy="148" r="8" fill="#17211c"/>
+  <path d="M132 196c19 13 38 13 56 0" fill="none" stroke="#17211c" stroke-width="12" stroke-linecap="round"/>
+  <path d="M111 113c18-12 34-12 48 0M161 113c18-12 34-12 48 0" fill="none" stroke="#2f623f" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="153" cy="174" r="5" fill="#2f623f"/>
+  <circle cx="171" cy="174" r="5" fill="#2f623f"/>
+  <path d="M91 231h138" stroke="#2f623f" stroke-width="14" stroke-linecap="round"/>
+</svg>

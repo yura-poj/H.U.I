@@ -1,0 +1,420 @@
+:root {
+  color: #17211c;
+  background: #eff3ed;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 28px;
+  background:
+    linear-gradient(135deg, rgba(26, 104, 88, 0.16), rgba(183, 64, 55, 0.12)),
+    #eff3ed;
+}
+
+.stage {
+  min-height: calc(100vh - 56px);
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0 0;
+}
+
+.eyebrow,
+.label {
+  margin: 0;
+  color: #617066;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  color: #15221d;
+  font-size: clamp(2rem, 6vw, 4.5rem);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+h2 {
+  margin-bottom: 8px;
+  font-size: 2.25rem;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.auth-layout {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.auth-panel,
+.side-panel,
+.fight,
+.history-panel {
+  border: 1px solid rgba(23, 33, 28, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 16px 40px rgba(18, 27, 22, 0.08);
+}
+
+.auth-panel {
+  width: min(420px, 100%);
+  padding: 22px;
+  display: grid;
+  gap: 16px;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #e2e9e3;
+}
+
+.tabs button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #435149;
+  font-weight: 800;
+}
+
+.tabs button.active {
+  background: #ffffff;
+  color: #17211c;
+  box-shadow: 0 6px 16px rgba(18, 27, 22, 0.08);
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  color: #435149;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #c6d0c8;
+  border-radius: 8px;
+  background: #fbfdfb;
+  color: #17211c;
+  outline: none;
+}
+
+input {
+  height: 46px;
+  padding: 0 13px;
+}
+
+textarea {
+  min-height: 118px;
+  resize: vertical;
+  padding: 12px 13px;
+}
+
+input:focus,
+textarea:focus {
+  border-color: #1f7a65;
+  box-shadow: 0 0 0 3px rgba(31, 122, 101, 0.16);
+}
+
+.primary-button,
+.ghost-button {
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 0 16px;
+  font-weight: 900;
+}
+
+.primary-button {
+  border: 0;
+  background: #1f7a65;
+  color: #ffffff;
+}
+
+.ghost-button {
+  border: 1px solid #c6d0c8;
+  background: rgba(255, 255, 255, 0.75);
+  color: #17211c;
+}
+
+.error {
+  margin: 0;
+  color: #b7352c;
+  font-weight: 800;
+}
+
+.game-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(260px, 340px);
+  gap: 18px;
+  min-height: 0;
+}
+
+.side-panel,
+.history-panel,
+.fight {
+  padding: 18px;
+}
+
+.player-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #dce4dd;
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #d44f3f;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.level-list {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.level-row {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #dde5de;
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.level-row.current {
+  border-color: #1f7a65;
+  background: #e8f4ef;
+}
+
+.level-row span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #17211c;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.level-row small,
+.event-card small {
+  color: #617066;
+}
+
+.fight {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.empty-fight {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+}
+
+.monster-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 300px) 1fr;
+  gap: 22px;
+  align-items: center;
+}
+
+.monster-art {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #dce4dd;
+  overflow: hidden;
+}
+
+.monster-art img {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  filter: drop-shadow(0 16px 20px rgba(23, 33, 28, 0.18));
+}
+
+.monster-info p {
+  color: #506056;
+}
+
+.hp-row,
+.action-row,
+.event-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hp-bar {
+  height: 18px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #d9e0da;
+}
+
+.hp-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d44f3f, #f3a64c);
+  transition: width 180ms ease;
+}
+
+.insult-form {
+  display: grid;
+  gap: 12px;
+}
+
+.victory-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #17211c;
+  color: #ffffff;
+}
+
+.history-panel {
+  overflow: auto;
+}
+
+.empty-history {
+  margin-top: 14px;
+  color: #617066;
+}
+
+.event-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #dde5de;
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.event-text {
+  margin: 0;
+  color: #17211c;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #6b756d;
+}
+
+.status-dot.hit {
+  background: #1f7a65;
+}
+
+.status-dot.blocked {
+  background: #d44f3f;
+}
+
+@media (max-width: 1080px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .history-panel {
+    max-height: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  .stage {
+    min-height: calc(100vh - 28px);
+  }
+
+  .topbar,
+  .monster-panel,
+  .hp-row,
+  .action-row,
+  .victory-band {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .monster-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .primary-button,
+  .ghost-button {
+    width: 100%;
+  }
+}
