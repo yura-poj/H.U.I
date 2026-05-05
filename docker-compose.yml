@@ -18,7 +18,8 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: hui-backend
     environment:
       FLASK_ENV: development
@@ -27,6 +28,7 @@ services:
       - "${BACKEND_PORT:-5001}:5000"
     volumes:
       - ./backend:/app
+      - ./model:/app/model
     depends_on:
       postgres:
         condition: service_healthy

@@ -10,7 +10,7 @@ from app.repositories import (
     has_used_insult,
 )
 from app.serializers import serialize_game
-from app.services.insults import calculate_damage, count_words, monster_reply, normalize_insult
+from app.services.insults import count_words, monster_reply, normalize_insult, score_insult
 
 games_bp = Blueprint("games", __name__)
 
@@ -23,7 +23,11 @@ def start_game(user):
     if not level:
         return jsonify({"error": "current_level_not_found"}), 500
 
-    game = create_game(user["id"], level)
+    game = create_game(
+        user_id=user["id"],
+        level=level,
+        monster_hp=user.get("current_monster_hp", level["monster_hp"]),
+    )
     full_game = get_game_for_user(game["id"], user["id"])
 
     return jsonify({"game": serialize_game(full_game)}), 201
@@ -86,29 +90,42 @@ def submit_insult(user, game_id):
             }
         )
 
-    damage = calculate_damage(text)
+    score = score_insult(text)
+    damage = score["damage"]
     updated_game = apply_insult_damage(
         game_id=game["id"],
         user_id=user["id"],
+        level_id=game["level_id"],
         original_text=text,
         normalized_text=normalized_text,
         damage=damage,
+        score_metadata=score,
     )
 
     full_game = get_game_for_user(updated_game["id"], user["id"])
     advanced_to_level_id = None
+    advanced_to_monster_hp = None
 
     if full_game["status"] == "won":
         advanced_user = advance_user_level_if_possible(user["id"], full_game["level_id"])
         if advanced_user:
             advanced_to_level_id = advanced_user["current_level_id"]
+            advanced_to_monster_hp = advanced_user["current_monster_hp"]
 
     return jsonify(
         {
             "accepted": True,
             "damage": damage,
+            "score": {
+                "source": score["source"],
+                "toxic": score["toxic"],
+                "toxicity_score": score["toxicity_score"],
+                "label": score["label"],
+                "signals": score["signals"],
+            },
             "monster_reply": monster_reply(damage, full_game["status"] == "won"),
             "advanced_to_level_id": advanced_to_level_id,
+            "advanced_to_monster_hp": advanced_to_monster_hp,
             "game": serialize_game(full_game),
         }
     )

@@ -6,7 +6,9 @@ def create_app():
     from app.routes.auth import auth_bp
     from app.routes.games import games_bp
     from app.routes.health import health_bp
+    from app.routes.insults import insults_bp
     from app.routes.levels import levels_bp
+    from app.routes.leaderboard import leaderboard_bp
 
     app = Flask(__name__)
     CORS(app)
@@ -16,6 +18,8 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(games_bp, url_prefix="/api")
     app.register_blueprint(health_bp, url_prefix="/api")
+    app.register_blueprint(insults_bp, url_prefix="/api")
+    app.register_blueprint(leaderboard_bp, url_prefix="/api")
     app.register_blueprint(levels_bp, url_prefix="/api")
 
     return app

@@ -6,28 +6,24 @@ from psycopg.rows import dict_row
 from app.config import Config
 
 
-SEED_LEVELS = [
-    {
-        "id": "swamp_troll",
-        "order_index": 1,
-        "title": "Swamp Troll",
-        "description": "A beginner monster that is easy to offend.",
-        "monster_name": "Slopjaw",
-        "monster_icon": "/image.webp",
-        "monster_hp": 100,
-        "min_words_per_insult": 3,
-    },
-    {
-        "id": "stone_giant",
-        "order_index": 2,
-        "title": "Stone Giant",
-        "description": "A tougher monster that needs sharper wording.",
-        "monster_name": "Gravelgut",
-        "monster_icon": "/image.webp",
-        "monster_hp": 180,
-        "min_words_per_insult": 4,
-    },
-]
+def _build_seed_levels() -> list[dict]:
+    return [
+        {
+            "id": f"level_{level_number}",
+            "order_index": level_number,
+            "title": f"Level {level_number}",
+            "description": f"Requires at least {level_number} word(s) per insult.",
+            "monster_name": f"Monster {level_number}",
+            "monster_icon": f"{level_number}.png",
+            "monster_hp": 20 * 2 ** (level_number - 1),
+            "min_words_per_insult": level_number,
+            "active": True,
+        }
+        for level_number in range(1, 11)
+    ]
+
+
+SEED_LEVELS = _build_seed_levels()
 
 
 @contextmanager
@@ -62,8 +58,15 @@ def init_db() -> None:
                     monster_icon text not null,
                     monster_hp integer not null check (monster_hp > 0),
                     min_words_per_insult integer not null check (min_words_per_insult > 0),
+                    active boolean not null default true,
                     created_at timestamptz not null default now()
                 )
+                """
+            )
+            cursor.execute(
+                """
+                alter table levels
+                add column if not exists active boolean not null default true
                 """
             )
             cursor.execute(
@@ -73,8 +76,15 @@ def init_db() -> None:
                     username text not null unique,
                     password_hash text not null,
                     current_level_id text not null references levels(id),
+                    current_monster_hp integer not null default 20 check (current_monster_hp >= 0),
                     created_at timestamptz not null default now()
                 )
+                """
+            )
+            cursor.execute(
+                """
+                alter table users
+                add column if not exists current_monster_hp integer
                 """
             )
             cursor.execute(
@@ -104,11 +114,84 @@ def init_db() -> None:
                 create table if not exists used_insults (
                     id text primary key,
                     user_id text not null references users(id) on delete cascade,
+                    game_id text references game_sessions(id),
+                    level_id text references levels(id),
                     normalized_text text not null,
                     original_text text not null,
+                    damage integer not null default 0,
+                    score_source text not null default 'heuristic',
+                    toxic boolean,
+                    toxicity_score double precision,
+                    toxicity_label text,
+                    model_signals jsonb not null default '{}'::jsonb,
                     created_at timestamptz not null default now(),
                     unique (user_id, normalized_text)
                 )
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists game_id text references game_sessions(id)
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists level_id text references levels(id)
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists damage integer not null default 0
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists score_source text not null default 'heuristic'
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists toxic boolean
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists toxicity_score double precision
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists toxicity_label text
+                """
+            )
+            cursor.execute(
+                """
+                alter table used_insults
+                add column if not exists model_signals jsonb not null default '{}'::jsonb
+                """
+            )
+            cursor.execute(
+                """
+                do $$
+                begin
+                    if not exists (
+                        select 1
+                        from pg_constraint
+                        where conname = 'used_insults_damage_range'
+                    ) then
+                        alter table used_insults
+                        add constraint used_insults_damage_range
+                        check (damage between 0 and 10);
+                    end if;
+                end
+                $$;
                 """
             )
             cursor.execute(
@@ -123,6 +206,44 @@ def init_db() -> None:
                 on used_insults(user_id)
                 """
             )
+            cursor.execute(
+                """
+                update levels
+                set active = false,
+                    order_index = order_index + 1000
+                where id not in (
+                    'level_1',
+                    'level_2',
+                    'level_3',
+                    'level_4',
+                    'level_5',
+                    'level_6',
+                    'level_7',
+                    'level_8',
+                    'level_9',
+                    'level_10'
+                )
+                    and order_index < 1000
+                """
+            )
+            cursor.execute(
+                """
+                update levels
+                set active = false
+                where id not in (
+                    'level_1',
+                    'level_2',
+                    'level_3',
+                    'level_4',
+                    'level_5',
+                    'level_6',
+                    'level_7',
+                    'level_8',
+                    'level_9',
+                    'level_10'
+                )
+                """
+            )
 
             for level in SEED_LEVELS:
                 cursor.execute(
@@ -135,7 +256,8 @@ def init_db() -> None:
                         monster_name,
                         monster_icon,
                         monster_hp,
-                        min_words_per_insult
+                        min_words_per_insult,
+                        active
                     )
                     values (
                         %(id)s,
@@ -145,7 +267,8 @@ def init_db() -> None:
                         %(monster_name)s,
                         %(monster_icon)s,
                         %(monster_hp)s,
-                        %(min_words_per_insult)s
+                        %(min_words_per_insult)s,
+                        %(active)s
                     )
                     on conflict (id) do update set
                         order_index = excluded.order_index,
@@ -154,9 +277,116 @@ def init_db() -> None:
                         monster_name = excluded.monster_name,
                         monster_icon = excluded.monster_icon,
                         monster_hp = excluded.monster_hp,
-                        min_words_per_insult = excluded.min_words_per_insult
+                        min_words_per_insult = excluded.min_words_per_insult,
+                        active = excluded.active
                     """,
                     level,
                 )
 
+            cursor.execute(
+                """
+                update users
+                set current_level_id = case
+                    when current_level_id = 'stone_giant' then 'level_2'
+                    else 'level_1'
+                end
+                where current_level_id in ('swamp_troll', 'stone_giant')
+                """
+            )
+            cursor.execute(
+                """
+                update users
+                set current_level_id = 'level_1'
+                where not exists (
+                    select 1
+                    from levels
+                    where levels.id = users.current_level_id
+                        and levels.active = true
+                )
+                """
+            )
+            cursor.execute(
+                """
+                update users
+                set current_monster_hp = coalesce(
+                    (
+                        select game_sessions.monster_hp
+                        from game_sessions
+                        where game_sessions.user_id = users.id
+                            and game_sessions.level_id = users.current_level_id
+                            and game_sessions.status = 'active'
+                        order by game_sessions.updated_at desc,
+                                 game_sessions.created_at desc
+                        limit 1
+                    ),
+                    levels.monster_hp
+                )
+                from levels
+                where levels.id = users.current_level_id
+                    and users.current_monster_hp is null
+                """
+            )
+            cursor.execute(
+                """
+                update users
+                set current_monster_hp = least(greatest(current_monster_hp, 0), levels.monster_hp)
+                from levels
+                where levels.id = users.current_level_id
+                """
+            )
+            cursor.execute(
+                """
+                alter table users
+                alter column current_monster_hp set default 20
+                """
+            )
+            cursor.execute(
+                """
+                alter table users
+                alter column current_monster_hp set not null
+                """
+            )
+            cursor.execute(
+                """
+                do $$
+                begin
+                    if not exists (
+                        select 1
+                        from pg_constraint
+                        where conname = 'users_current_monster_hp_nonnegative'
+                    ) then
+                        alter table users
+                        add constraint users_current_monster_hp_nonnegative
+                        check (current_monster_hp >= 0);
+                    end if;
+                end
+                $$;
+                """
+            )
+
+            _backfill_insult_damage(cursor)
+
         connection.commit()
+
+
+def _backfill_insult_damage(cursor) -> None:
+    from app.services.insults import calculate_damage
+
+    cursor.execute(
+        """
+        select id, original_text
+        from used_insults
+        where damage = 0
+        """
+    )
+    insults = cursor.fetchall()
+
+    for insult in insults:
+        cursor.execute(
+            """
+            update used_insults
+            set damage = %s
+            where id = %s
+            """,
+            (calculate_damage(insult["original_text"]), insult["id"]),
+        )

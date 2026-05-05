@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+const RECENT_HISTORY_LIMIT = 5;
 
 const username = ref("");
 const password = ref("");
@@ -14,6 +15,17 @@ const mode = ref("login");
 const loading = ref(false);
 const error = ref("");
 const events = ref([]);
+const activeView = ref("game");
+const history = ref([]);
+const leaderboard = ref([]);
+const currentUserRank = ref(null);
+const leaderboardSection = ref("top");
+const leaderboardPage = ref(1);
+const panelLoading = ref(false);
+const monsterHit = ref(false);
+const floatingDamage = ref(null);
+const monsterSpeech = ref("");
+const monsterTimers = [];
 
 const isAuthed = computed(() => Boolean(token.value && user.value));
 const currentLevel = computed(() => {
@@ -30,6 +42,9 @@ const hpPercent = computed(() => {
 
   return Math.max(0, Math.round((game.value.monster.hp / game.value.monster.max_hp) * 100));
 });
+const totalDamage = computed(() => history.value.reduce((sum, item) => sum + item.damage, 0));
+const totalInsults = computed(() => history.value.length);
+const recentHistory = computed(() => history.value.slice(0, RECENT_HISTORY_LIMIT));
 
 function rememberSession(nextToken, nextUser) {
   token.value = nextToken;
@@ -39,10 +54,15 @@ function rememberSession(nextToken, nextUser) {
 }
 
 function clearSession() {
+  resetMonsterEffects();
   token.value = "";
   user.value = null;
   game.value = null;
   events.value = [];
+  history.value = [];
+  leaderboard.value = [];
+  currentUserRank.value = null;
+  activeView.value = "game";
   localStorage.removeItem("hui_token");
   localStorage.removeItem("hui_user");
 }
@@ -73,6 +93,39 @@ async function loadLevels() {
   levels.value = data.levels;
 }
 
+async function loadHistory() {
+  const data = await request("/insults/history");
+  history.value = data.history;
+}
+
+async function loadLeaderboard() {
+  const params = new URLSearchParams({
+    section: leaderboardSection.value,
+    page: String(leaderboardPage.value),
+    page_size: leaderboardSection.value === "top" ? "10" : "100",
+  });
+  const data = await request(`/leaderboard?${params.toString()}`);
+
+  leaderboard.value = data.leaders;
+  currentUserRank.value = data.current_user_rank;
+}
+
+async function loadPanels() {
+  if (!isAuthed.value) {
+    return;
+  }
+
+  panelLoading.value = true;
+
+  try {
+    await Promise.all([loadHistory(), loadLeaderboard()]);
+  } catch (err) {
+    error.value = humanError(err.message);
+  } finally {
+    panelLoading.value = false;
+  }
+}
+
 async function submitAuth() {
   error.value = "";
   loading.value = true;
@@ -85,8 +138,10 @@ async function submitAuth() {
     });
 
     rememberSession(data.token, data.user);
+    activeView.value = "game";
     await loadLevels();
     await startGame();
+    await loadPanels();
   } catch (err) {
     error.value = humanError(err.message);
   } finally {
@@ -97,6 +152,8 @@ async function submitAuth() {
 async function startGame() {
   error.value = "";
   loading.value = true;
+  activeView.value = "game";
+  resetMonsterEffects();
 
   try {
     const data = await request("/games", { method: "POST" });
@@ -134,14 +191,30 @@ async function submitInsult() {
       type: data.accepted ? "hit" : "blocked",
       text,
       damage: data.damage,
+      score: data.score,
       reason: data.reason,
       reply: data.monster_reply,
       advancedTo: data.advanced_to_level_id,
     });
+    playMonsterResponse(data);
 
     if (data.advanced_to_level_id) {
-      user.value = { ...user.value, current_level_id: data.advanced_to_level_id };
+      user.value = {
+        ...user.value,
+        current_level_id: data.advanced_to_level_id,
+        current_monster_hp: data.advanced_to_monster_hp,
+      };
       localStorage.setItem("hui_user", JSON.stringify(user.value));
+    } else if (data.accepted) {
+      user.value = {
+        ...user.value,
+        current_monster_hp: data.game.monster.hp,
+      };
+      localStorage.setItem("hui_user", JSON.stringify(user.value));
+    }
+
+    if (data.accepted) {
+      await loadPanels();
     }
   } catch (err) {
     error.value = humanError(err.message);
@@ -165,6 +238,81 @@ function humanError(code) {
   return messages[code] || code;
 }
 
+async function openView(view) {
+  activeView.value = view;
+
+  if (view === "history") {
+    await loadHistory();
+  }
+
+  if (view === "leaderboard") {
+    await loadLeaderboard();
+  }
+}
+
+async function setLeaderboardSection(section) {
+  leaderboardSection.value = section;
+  leaderboardPage.value = 1;
+  await loadLeaderboard();
+}
+
+async function changeLeaderboardPage(delta) {
+  leaderboardPage.value = Math.max(1, leaderboardPage.value + delta);
+  await loadLeaderboard();
+}
+
+function useMonsterFallback(event) {
+  if (event.target.dataset.fallbackApplied) {
+    return;
+  }
+
+  event.target.dataset.fallbackApplied = "true";
+  event.target.src = "/image.webp";
+}
+
+function clearMonsterTimers() {
+  while (monsterTimers.length > 0) {
+    window.clearTimeout(monsterTimers.pop());
+  }
+}
+
+function resetMonsterEffects() {
+  clearMonsterTimers();
+  monsterHit.value = false;
+  floatingDamage.value = null;
+  monsterSpeech.value = "";
+}
+
+function playMonsterResponse(data) {
+  clearMonsterTimers();
+  monsterHit.value = false;
+  floatingDamage.value = null;
+  monsterSpeech.value = data.monster_reply || "";
+
+  if (data.accepted) {
+    window.requestAnimationFrame(() => {
+      monsterHit.value = true;
+      floatingDamage.value = {
+        id: `${Date.now()}-${data.damage ?? 0}`,
+        damage: data.damage ?? 0,
+      };
+    });
+
+    monsterTimers.push(window.setTimeout(() => {
+      monsterHit.value = false;
+    }, 420));
+    monsterTimers.push(window.setTimeout(() => {
+      floatingDamage.value = null;
+    }, 900));
+  }
+
+  if (monsterSpeech.value) {
+    monsterTimers.push(window.setTimeout(() => {
+      monsterSpeech.value = "";
+    }, 2600));
+  }
+}
+
 onMounted(async () => {
   if (!isAuthed.value) {
     return;
@@ -172,21 +320,26 @@ onMounted(async () => {
 
   try {
     await loadLevels();
+    await startGame();
+    await loadPanels();
   } catch (err) {
     error.value = humanError(err.message);
   }
+});
+
+onBeforeUnmount(() => {
+  clearMonsterTimers();
 });
 </script>
 
 <template>
   <main class="app-shell">
     <section class="stage">
-      <div class="topbar">
+      <div v-if="!isAuthed" class="topbar">
         <div>
           <p class="eyebrow">Monster insult arena</p>
           <h1>Break the monster with words</h1>
         </div>
-        <button v-if="isAuthed" class="ghost-button" type="button" @click="clearSession">Log out</button>
       </div>
 
       <div v-if="!isAuthed" class="auth-layout">
@@ -230,104 +383,229 @@ onMounted(async () => {
         </form>
       </div>
 
-      <div v-else class="game-layout">
-        <aside class="side-panel">
-          <div class="player-block">
-            <span class="avatar">{{ user.username.slice(0, 1).toUpperCase() }}</span>
-            <div>
-              <p class="label">Player</p>
-              <strong>{{ user.username }}</strong>
+      <template v-else>
+        <div v-if="activeView === 'game'" class="game-dashboard">
+          <aside class="stats-panel">
+            <div class="score-total">
+              <p>Всего очков</p>
+              <strong>{{ totalDamage }}</strong>
+              <span>{{ totalInsults }} обзывательств</span>
             </div>
-          </div>
+          </aside>
 
-          <div class="level-list">
-            <p class="label">Level path</p>
-            <div
-              v-for="level in levels"
-              :key="level.id"
-              class="level-row"
-              :class="{ current: level.id === user.current_level_id }"
-            >
-              <span>{{ level.order }}</span>
-              <div>
-                <strong>{{ level.title }}</strong>
-                <small>{{ level.monster.name }}</small>
-              </div>
+          <section class="fight">
+            <div v-if="!game" class="empty-fight">
+              Готовим бой...
             </div>
-          </div>
-        </aside>
 
-        <section class="fight">
-          <div v-if="!game" class="empty-fight">
-            <button class="primary-button" :disabled="loading" type="button" @click="startGame">
-              Start current level
-            </button>
-          </div>
-
-          <template v-else>
-            <div class="monster-panel">
-              <div class="monster-art">
-                <img :src="game.monster.icon" :alt="game.monster.name" />
-              </div>
-              <div class="monster-info">
-                <p class="label">Current monster</p>
-                <h2>{{ game.monster.name }}</h2>
+            <template v-else>
+              <div class="level-header">
+                <p class="label">{{ currentLevel?.title || game.level_id }}</p>
+                <h2>Описание уровня</h2>
                 <p>{{ currentLevel?.description }}</p>
-                <div class="hp-row">
-                  <span>HP</span>
-                  <strong>{{ game.monster.hp }} / {{ game.monster.max_hp }}</strong>
+              </div>
+
+              <div class="arena">
+                <div class="monster-stage">
+                  <div class="monster-art" :class="{ hit: monsterHit }">
+                    <span class="monster-placeholder">фото монстра и игровой геймплей</span>
+                    <img
+                      :src="game.monster.icon"
+                      :alt="game.monster.name"
+                      @error="useMonsterFallback"
+                    />
+                    <Transition name="damage-pop">
+                      <span
+                        v-if="floatingDamage"
+                        :key="floatingDamage.id"
+                        class="floating-damage"
+                      >
+                        -{{ floatingDamage.damage }}
+                      </span>
+                    </Transition>
+                  </div>
+                  <Transition name="speech-pop">
+                    <p v-if="monsterSpeech" class="monster-speech">{{ monsterSpeech }}</p>
+                  </Transition>
                 </div>
+
+                <div class="monster-info">
+                  <strong>{{ game.monster.name }}</strong>
+                  <span>HP {{ game.monster.hp }} / {{ game.monster.max_hp }}</span>
+                </div>
+
                 <div class="hp-bar" aria-label="Monster HP">
                   <span :style="{ width: `${hpPercent}%` }"></span>
                 </div>
+
+                <form class="insult-form" @submit.prevent="submitInsult">
+                  <label>
+                    Обзывательство
+                    <textarea
+                      v-model="insult"
+                      :disabled="game.status !== 'active'"
+                      :placeholder="`At least ${game.rules.min_words_per_insult} words`"
+                      rows="4"
+                    ></textarea>
+                  </label>
+                  <div class="action-row">
+                    <p v-if="error" class="error">{{ error }}</p>
+                    <button
+                      class="primary-button"
+                      :disabled="loading || game.status !== 'active' || !insult.trim()"
+                      type="submit"
+                    >
+                      Ударить словом
+                    </button>
+                  </div>
+                </form>
               </div>
+
+              <div v-if="game.status === 'won'" class="victory-band">
+                <strong>Monster defeated.</strong>
+                <button class="ghost-button" type="button" @click="startGame">Next fight</button>
+              </div>
+            </template>
+          </section>
+
+          <aside class="score-history">
+            <div class="side-actions">
+              <button class="rank-tab" type="button" @click="openView('leaderboard')">
+                Место в лидерборде
+                <strong v-if="currentUserRank">#{{ currentUserRank.rank }}</strong>
+              </button>
+              <button class="ghost-button" type="button" @click="openView('leaderboard')">
+                Лидерборд
+              </button>
             </div>
 
-            <form class="insult-form" @submit.prevent="submitInsult">
-              <label>
-                Insult
-                <textarea
-                  v-model="insult"
-                  :disabled="game.status !== 'active'"
-                  :placeholder="`At least ${game.rules.min_words_per_insult} words`"
-                  rows="4"
-                ></textarea>
-              </label>
-              <div class="action-row">
-                <p v-if="error" class="error">{{ error }}</p>
-                <button
-                  class="primary-button"
-                  :disabled="loading || game.status !== 'active' || !insult.trim()"
-                  type="submit"
-                >
-                  Hit with words
-                </button>
-              </div>
-            </form>
-
-            <div v-if="game.status === 'won'" class="victory-band">
-              <strong>Monster defeated.</strong>
-              <button class="ghost-button" type="button" @click="startGame">Next fight</button>
+            <div class="panel-heading">
+              <p>История с очками</p>
+              <button class="inline-link-button" type="button" @click="openView('history')">
+                Вся история
+              </button>
+              <span v-if="panelLoading">Загрузка</span>
             </div>
-          </template>
+            <div v-if="recentHistory.length === 0" class="empty-history">
+              Пока нет принятых обзывательств.
+            </div>
+            <article v-for="item in recentHistory" :key="item.id" class="event-card">
+              <div class="event-top">
+                <strong>{{ item.damage }}/10</strong>
+                <small>{{ item.monster_name || item.level_id || "Unknown monster" }}</small>
+              </div>
+              <p class="event-text">{{ item.text }}</p>
+            </article>
+          </aside>
+        </div>
+
+        <section v-else-if="activeView === 'history'" class="full-view">
+          <div class="view-header">
+            <button class="ghost-button" type="button" @click="openView('game')">
+              Назад к игре
+            </button>
+            <div>
+              <p class="label">Принятые обзывательства</p>
+              <h2>Полная история</h2>
+            </div>
+            <div class="view-stat">
+              <strong>{{ totalDamage }}</strong>
+              <span>{{ totalInsults }} обзывательств</span>
+            </div>
+          </div>
+
+          <div v-if="history.length === 0" class="empty-state">Пока нет принятых обзывательств.</div>
+          <div v-else class="history-list">
+            <article v-for="item in history" :key="item.id" class="history-row">
+              <div>
+                <p class="event-text">{{ item.text }}</p>
+                <small>{{ item.monster_name || item.level_id || "Unknown monster" }}</small>
+              </div>
+              <div class="score-badges">
+                <span>{{ item.damage }}/10 урона</span>
+                <span>{{ item.score?.source || "unknown" }}</span>
+                <span v-if="item.score?.toxic" class="toxic">
+                  {{ item.score.label || "toxic" }}
+                </span>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <aside class="history-panel">
-          <p class="label">Recent attempts</p>
-          <div v-if="events.length === 0" class="empty-history">No insults yet.</div>
-          <article v-for="event in events" :key="`${event.text}-${event.reply}`" class="event-card">
-            <div class="event-top">
-              <span :class="['status-dot', event.type]"></span>
-              <strong>{{ event.type === "hit" ? `${event.damage} damage` : event.type }}</strong>
+        <section v-else class="full-view">
+          <div class="view-header">
+            <button class="ghost-button" type="button" @click="openView('game')">
+              Назад к игре
+            </button>
+            <div>
+              <p class="label">Лидерборд</p>
+              <h2>Рейтинг игроков</h2>
             </div>
-            <p v-if="event.text" class="event-text">{{ event.text }}</p>
-            <small v-if="event.reply">{{ event.reply }}</small>
-            <small v-if="event.reason === 'duplicate_insult'">Already used by this player.</small>
-            <small v-if="event.reason === 'min_words'">Too short for this level.</small>
-            <small v-if="event.advancedTo">Advanced to {{ event.advancedTo }}.</small>
+            <div v-if="currentUserRank" class="view-stat">
+              <strong>#{{ currentUserRank.rank }}</strong>
+              <span>Твоё место</span>
+            </div>
+          </div>
+
+          <div class="leaderboard-switch">
+            <button
+              type="button"
+              :class="{ active: leaderboardSection === 'top' }"
+              @click="setLeaderboardSection('top')"
+            >
+              Топ 10
+            </button>
+            <button
+              type="button"
+              :class="{ active: leaderboardSection === 'all' }"
+              @click="setLeaderboardSection('all')"
+            >
+              Все игроки
+            </button>
+          </div>
+
+          <article v-if="currentUserRank" class="your-rank">
+            <span>Твоё место</span>
+            <strong>#{{ currentUserRank.rank }}</strong>
+            <small>
+              {{ currentUserRank.total_damage }} урона /
+              {{ currentUserRank.insults_count }} обзывательств
+            </small>
           </article>
-        </aside>
-      </div>
+
+          <div v-if="leaderboard.length === 0" class="empty-state">Пока нет игроков.</div>
+          <div v-else class="leaderboard-list">
+            <article v-for="leader in leaderboard" :key="leader.username" class="leader-row">
+              <strong>#{{ leader.rank }}</strong>
+              <div>
+                <p>{{ leader.username }}</p>
+                <small>{{ leader.current_level_id }}</small>
+              </div>
+              <span>{{ leader.total_damage }}</span>
+            </article>
+          </div>
+
+          <div v-if="leaderboardSection === 'all'" class="pager">
+            <button
+              class="ghost-button"
+              type="button"
+              :disabled="leaderboardPage === 1"
+              @click="changeLeaderboardPage(-1)"
+            >
+              Назад
+            </button>
+            <span>Страница {{ leaderboardPage }}</span>
+            <button
+              class="ghost-button"
+              type="button"
+              :disabled="leaderboard.length < 100"
+              @click="changeLeaderboardPage(1)"
+            >
+              Далее
+            </button>
+          </div>
+        </section>
+      </template>
     </section>
   </main>
 </template>

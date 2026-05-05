@@ -30,7 +30,9 @@ This is not a turn-based combat exchange. The monster can react with text or ani
 
 Each user must have a history of insults they have already used. Repeated insults by the same user should not damage the monster again, even if they are submitted in a different game session. The backend should detect duplicates for the current user and return a clear response explaining that the insult was already used.
 
-Damage is always an integer from `0` to `100`, inclusive. Any scoring logic must clamp or otherwise guarantee the final damage value stays in this range.
+Damage is always an integer from `0` to `10`, inclusive. Any scoring logic must clamp or otherwise guarantee the final damage value stays in this range.
+
+Damage should come from the local `model` package when available. The backend uses `model.predict.predict_text(text)["insult_score"]` as damage and falls back to a simple heuristic only if model inference is unavailable.
 
 The tone should be comic and absurd rather than hateful or personally abusive.
 
@@ -58,7 +60,7 @@ Data that should live in PostgreSQL:
 - Users.
 - Levels.
 - Game sessions.
-- User progress / current level.
+- User progress / current level and current monster HP on that level.
 - Used insult history per user.
 
 Do not use SQLite for the project unless the user explicitly asks for a temporary local fallback.
@@ -77,6 +79,8 @@ The backend should read `DATABASE_URL` from environment variables and connect to
 
 The frontend should read `VITE_API_URL` from environment variables and call the Flask API.
 
+The backend Docker image needs access to both `backend/` and `model/`; keep the backend Compose build context at the project root or otherwise mount/copy `model/` into `/app/model`.
+
 ## Levels
 
 Levels are stored in the database, not hardcoded across routes and not read from a static config file.
@@ -89,9 +93,11 @@ A level includes:
 - Level title.
 - Level description.
 - Monster name.
-- Monster icon.
+- Monster icon filename stored in the database.
 - Monster HP.
 - Minimum number of words required in an insult.
+
+The active seed grid has exactly 10 levels: `level_1` through `level_10`. The level number is also the minimum required word count for an accepted insult. HP starts at `20` on level 1 and doubles on each next level. Monster image filenames are stored as `1.png`, `2.png`, ..., `10.png`; the API should expose both `monster.icon_file` with that stored filename and `monster.icon` as a frontend-friendly URL such as `/1.png`.
 
 Possible future level fields:
 
@@ -102,26 +108,29 @@ Possible future level fields:
 
 ## Progression
 
-The user's current level changes only through progression.
+The user's current level and current monster HP change only through progression and accepted insult damage.
 
 When an accepted insult reduces the monster HP to `0` or below, the current game is won. After victory, the backend should advance the user's current level to the next level.
 
 The player must not be able to skip ahead or manually choose a later level.
 
+The frontend should not require a manual "start level" action after authentication. It should automatically request the current fight and use the saved monster HP for the user's current level.
+
 Example level shape:
 
 ```json
 {
-  "id": "swamp_troll",
-  "title": "Swamp Troll",
-  "description": "A beginner monster that is easy to offend.",
+  "id": "level_1",
+  "title": "Level 1",
+  "description": "Requires at least 1 word(s) per insult.",
   "monster": {
-    "name": "Slopjaw",
-    "icon": "/assets/monsters/swamp-troll.png"
+    "name": "Monster 1",
+    "icon": "/1.png",
+    "icon_file": "1.png"
   },
   "rules": {
-    "hp": 100,
-    "min_words_per_insult": 3
+    "hp": 20,
+    "min_words_per_insult": 1
   }
 }
 ```
@@ -142,6 +151,12 @@ For insults with too few words, prefer a game-style response with `accepted: fal
 
 For repeated insults by the same user, prefer a game-style response with `accepted: false`, `reason: "duplicate_insult"`, `damage: 0`, and no monster HP change.
 
+The accepted-insult history must store each insult text and its damage score. Blocked attempts must not be stored in the full history.
+
+The accepted-insult history should also store model score metadata: source, toxicity flag, toxicity score, label, and model signals. Toxicity is informational for now and must not block accepted damage unless the user changes the design.
+
+The leaderboard is global and sorted by total accepted damage. It has two sections: `Top 10` and paginated `All players`; the all-players section starts at rank 1 and includes the top 10. The API and frontend should always show the current user's rank.
+
 ## Implementation Preferences
 
 - Keep level persistence and lookup separate from route code.
@@ -153,10 +168,10 @@ For repeated insults by the same user, prefer a game-style response with `accept
 - Advance the user's level after victory over the current monster.
 - Track used insults per user so repeat submissions can be rejected consistently across game sessions.
 - Store user passwords only as hashes.
-- Ensure calculated damage is always in the `0..100` range.
+- Ensure calculated damage is always in the `0..10` range.
 - Use PostgreSQL for persistent project data.
 - Keep Docker Compose as the standard local development entrypoint.
 
 ## Editing Rule
 
-At the moment, only edit this `agents.md` file unless the user explicitly asks to create or modify other files.
+Keep edits scoped to the user's requested backend, frontend, Docker, and model integration work. Do not edit unrelated files or the source training data unless explicitly requested.
