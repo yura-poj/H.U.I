@@ -2,6 +2,7 @@ def create_app():
     from flask import Flask
     from flask_cors import CORS
 
+    from app.config import Config
     from app.db import init_db
     from app.routes.auth import auth_bp
     from app.routes.games import games_bp
@@ -11,7 +12,7 @@ def create_app():
     from app.routes.leaderboard import leaderboard_bp
 
     app = Flask(__name__)
-    CORS(app)
+    CORS(app, origins=Config.CORS_ORIGINS)
 
     init_db()
 

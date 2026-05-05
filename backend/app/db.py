@@ -28,6 +28,9 @@ SEED_LEVELS = _build_seed_levels()
 
 @contextmanager
 def get_connection():
+    if not Config.DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is required.")
+
     with psycopg.connect(Config.DATABASE_URL, row_factory=dict_row) as connection:
         yield connection
 
@@ -363,30 +366,4 @@ def init_db() -> None:
                 $$;
                 """
             )
-
-            _backfill_insult_damage(cursor)
-
         connection.commit()
-
-
-def _backfill_insult_damage(cursor) -> None:
-    from app.services.insults import calculate_damage
-
-    cursor.execute(
-        """
-        select id, original_text
-        from used_insults
-        where damage = 0
-        """
-    )
-    insults = cursor.fetchall()
-
-    for insult in insults:
-        cursor.execute(
-            """
-            update used_insults
-            set damage = %s
-            where id = %s
-            """,
-            (calculate_damage(insult["original_text"]), insult["id"]),
-        )

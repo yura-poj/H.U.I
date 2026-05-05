@@ -64,23 +64,17 @@ def test_submit_insult_returns_next_level_saved_monster_hp(monkeypatch):
     app = flask.Flask(__name__)
     app.register_blueprint(games_bp, url_prefix="/api")
 
-    active_game = {
+    won_game = {
         "id": "game-1",
         "user_id": "user-1",
         "level_id": "level_1",
-        "monster_hp": 3,
-        "status": "active",
+        "monster_hp": 0,
+        "status": "won",
         "monster_name": "Monster 1",
         "monster_icon": "1.png",
         "monster_max_hp": 20,
         "min_words_per_insult": 1,
     }
-    won_game = {
-        **active_game,
-        "monster_hp": 0,
-        "status": "won",
-    }
-    games = iter([active_game, won_game])
 
     monkeypatch.setattr(
         auth_module,
@@ -92,29 +86,24 @@ def test_submit_insult_returns_next_level_saved_monster_hp(monkeypatch):
             "current_monster_hp": 3,
         },
     )
-    monkeypatch.setattr(games_module, "get_game_for_user", lambda game_id, user_id: next(games))
-    monkeypatch.setattr(games_module, "has_used_insult", lambda user_id, normalized_text: False)
     monkeypatch.setattr(
         games_module,
-        "score_insult",
-        lambda text: {
+        "submit_insult_attempt",
+        lambda user, game_id, text: {
+            "status": "accepted",
+            "accepted": True,
             "damage": 5,
-            "source": "model",
-            "toxic": False,
-            "toxicity_score": 0.1,
-            "label": "normal",
-            "signals": {},
-        },
-    )
-    monkeypatch.setattr(games_module, "apply_insult_damage", lambda **kwargs: {"id": "game-1"})
-    monkeypatch.setattr(
-        games_module,
-        "advance_user_level_if_possible",
-        lambda user_id, current_level_id: {
-            "id": "user-1",
-            "username": "player",
-            "current_level_id": "level_2",
-            "current_monster_hp": 40,
+            "score": {
+                "source": "model",
+                "toxic": False,
+                "toxicity_score": 0.1,
+                "label": "normal",
+                "signals": {},
+            },
+            "monster_reply": "The monster is defeated by the insult.",
+            "advanced_to_level_id": "level_2",
+            "advanced_to_monster_hp": 40,
+            "game": won_game,
         },
     )
 

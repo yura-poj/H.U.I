@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
 from app.db import check_connection
 
@@ -10,6 +10,7 @@ def health():
     error = check_connection()
 
     if error:
-        return jsonify({"status": "error", "database": "unavailable", "detail": error}), 503
+        current_app.logger.warning("Database health check failed: %s", error)
+        return jsonify({"status": "error", "database": "unavailable"}), 503
 
     return jsonify({"status": "ok", "database": "ok"})

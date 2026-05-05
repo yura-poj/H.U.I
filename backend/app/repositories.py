@@ -163,6 +163,25 @@ def create_game(user_id: str, level: dict, monster_hp: int) -> dict:
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            if status == "active":
+                cursor.execute(
+                    """
+                    select *
+                    from game_sessions
+                    where user_id = %s
+                        and level_id = %s
+                        and monster_hp = %s
+                        and status = 'active'
+                    order by updated_at desc, created_at desc, id desc
+                    limit 1
+                    """,
+                    (user_id, level["id"], starting_hp),
+                )
+                existing_game = cursor.fetchone()
+
+                if existing_game:
+                    return existing_game
+
             cursor.execute(
                 """
                 insert into game_sessions (id, user_id, level_id, monster_hp, status)
@@ -180,18 +199,54 @@ def create_game(user_id: str, level: dict, monster_hp: int) -> dict:
 def get_game_for_user(game_id: str, user_id: str) -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                select game_sessions.*, levels.title, levels.description, levels.monster_name,
-                       levels.monster_icon, levels.monster_hp as monster_max_hp,
-                       levels.min_words_per_insult
-                from game_sessions
-                join levels on levels.id = game_sessions.level_id
-                where game_sessions.id = %s and game_sessions.user_id = %s
-                """,
-                (game_id, user_id),
-            )
-            return cursor.fetchone()
+            return _get_game_for_user(cursor, game_id, user_id)
+
+
+def _get_game_for_user(cursor, game_id: str, user_id: str) -> dict | None:
+    cursor.execute(
+        """
+        select game_sessions.*, levels.title, levels.description, levels.monster_name,
+               levels.monster_icon, levels.monster_hp as monster_max_hp,
+               levels.min_words_per_insult
+        from game_sessions
+        join levels on levels.id = game_sessions.level_id
+        where game_sessions.id = %s and game_sessions.user_id = %s
+        """,
+        (game_id, user_id),
+    )
+    return cursor.fetchone()
+
+
+def _get_game_for_user_locked(cursor, game_id: str, user_id: str) -> dict | None:
+    cursor.execute(
+        """
+        select game_sessions.*, levels.title, levels.description, levels.monster_name,
+               levels.monster_icon, levels.monster_hp as monster_max_hp,
+               levels.min_words_per_insult
+        from game_sessions
+        join levels on levels.id = game_sessions.level_id
+        where game_sessions.id = %s and game_sessions.user_id = %s
+        for update of game_sessions
+        """,
+        (game_id, user_id),
+    )
+    return cursor.fetchone()
+
+
+def _get_next_level(cursor, current_level_id: str) -> dict | None:
+    cursor.execute(
+        """
+        select next_level.*
+        from levels current_level
+        join levels next_level
+            on next_level.order_index = current_level.order_index + 1
+            and next_level.active = true
+        where current_level.id = %s
+            and current_level.active = true
+        """,
+        (current_level_id,),
+    )
+    return cursor.fetchone()
 
 
 def has_used_insult(user_id: str, normalized_text: str) -> bool:
@@ -216,9 +271,77 @@ def apply_insult_damage(
     normalized_text: str,
     damage: int,
     score_metadata: dict,
+) -> dict | None:
+    result = apply_current_insult_damage(
+        game_id=game_id,
+        user_id=user_id,
+        level_id=level_id,
+        original_text=original_text,
+        normalized_text=normalized_text,
+        damage=damage,
+        score_metadata=score_metadata,
+    )
+
+    if result["status"] != "accepted":
+        return None
+
+    return result["game"]
+
+
+def apply_current_insult_damage(
+    game_id: str,
+    user_id: str,
+    level_id: str,
+    original_text: str,
+    normalized_text: str,
+    damage: int,
+    score_metadata: dict,
 ) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select id, username, current_level_id, current_monster_hp, created_at
+                from users
+                where id = %s
+                for update
+                """,
+                (user_id,),
+            )
+            user = cursor.fetchone()
+
+            if not user:
+                return {"status": "game_not_found"}
+
+            game = _get_game_for_user_locked(cursor, game_id, user_id)
+
+            if not game:
+                return {"status": "game_not_found"}
+
+            if game["status"] != "active":
+                return {"status": "game_already_finished", "game": game}
+
+            if game["level_id"] != user["current_level_id"]:
+                return {"status": "stale_game_session", "game": game}
+
+            cursor.execute(
+                """
+                select id
+                from game_sessions
+                where user_id = %s
+                    and level_id = %s
+                    and monster_hp = %s
+                    and status = 'active'
+                order by updated_at desc, created_at desc, id desc
+                limit 1
+                """,
+                (user_id, user["current_level_id"], user["current_monster_hp"]),
+            )
+            canonical_game = cursor.fetchone()
+
+            if not canonical_game or canonical_game["id"] != game_id:
+                return {"status": "stale_game_session", "game": game}
+
             cursor.execute(
                 """
                 insert into used_insults (
@@ -236,6 +359,8 @@ def apply_insult_damage(
                     model_signals
                 )
                 values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (user_id, normalized_text) do nothing
+                returning id
                 """,
                 (
                     str(uuid.uuid4()),
@@ -252,29 +377,70 @@ def apply_insult_damage(
                     Jsonb(score_metadata.get("signals", {})),
                 ),
             )
+
+            if cursor.fetchone() is None:
+                return {"status": "duplicate_insult", "game": game}
+
             cursor.execute(
                 """
                 update game_sessions
                 set monster_hp = greatest(monster_hp - %s, 0),
                     status = case when greatest(monster_hp - %s, 0) = 0 then 'won' else status end,
                     updated_at = now()
-                where id = %s and user_id = %s
+                where id = %s
+                    and user_id = %s
+                    and level_id = %s
+                    and status = 'active'
                 returning *
                 """,
-                (damage, damage, game_id, user_id),
+                (damage, damage, game_id, user_id, level_id),
             )
-            game = cursor.fetchone()
+            updated_game = cursor.fetchone()
+
+            if not updated_game:
+                connection.rollback()
+                return {"status": "stale_game_session", "game": game}
+
             cursor.execute(
                 """
                 update users
                 set current_monster_hp = %s
                 where id = %s and current_level_id = %s
+                returning id, username, current_level_id, current_monster_hp, created_at
                 """,
-                (game["monster_hp"], user_id, level_id),
+                (updated_game["monster_hp"], user_id, level_id),
             )
+            updated_user = cursor.fetchone()
+
+            if not updated_user:
+                connection.rollback()
+                return {"status": "stale_game_session", "game": game}
+
+            full_game = _get_game_for_user(cursor, game_id, user_id)
+            advanced_user = None
+
+            if full_game["status"] == "won":
+                next_level = _get_next_level(cursor, full_game["level_id"])
+                if next_level:
+                    cursor.execute(
+                        """
+                        update users
+                        set current_level_id = %s,
+                            current_monster_hp = %s
+                        where id = %s and current_level_id = %s
+                        returning id, username, current_level_id, current_monster_hp, created_at
+                        """,
+                        (next_level["id"], next_level["monster_hp"], user_id, level_id),
+                    )
+                    advanced_user = cursor.fetchone()
+
         connection.commit()
 
-    return game
+    return {
+        "status": "accepted",
+        "game": full_game,
+        "advanced_user": advanced_user,
+    }
 
 
 def list_user_insult_history(user_id: str) -> list[dict]:

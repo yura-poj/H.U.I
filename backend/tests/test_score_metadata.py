@@ -32,13 +32,8 @@ def test_serialize_insult_history_item_includes_score_metadata():
 
 
 def test_submit_insult_returns_and_persists_model_score(monkeypatch):
-    flask = pytest.importorskip("flask")
-    import app.auth as auth_module
-    import app.routes.games as games_module
-    from app.routes.games import games_bp
+    import app.services.games as games_service
 
-    app = flask.Flask(__name__)
-    app.register_blueprint(games_bp, url_prefix="/api")
     captured = {}
 
     game = {
@@ -61,29 +56,22 @@ def test_submit_insult_returns_and_persists_model_score(monkeypatch):
         "signals": {"insult": 0.94},
     }
 
-    monkeypatch.setattr(
-        auth_module,
-        "find_user_by_token",
-        lambda token: {"id": "user-1", "username": "player", "current_level_id": "swamp_troll"},
-    )
-    monkeypatch.setattr(games_module, "get_game_for_user", lambda game_id, user_id: game)
-    monkeypatch.setattr(games_module, "has_used_insult", lambda user_id, normalized_text: False)
-    monkeypatch.setattr(games_module, "score_insult", lambda text: score)
+    monkeypatch.setattr(games_service, "_get_game_for_user", lambda game_id, user_id: game)
+    monkeypatch.setattr(games_service, "score_insult", lambda text: score)
 
     def fake_apply_insult_damage(**kwargs):
         captured.update(kwargs)
-        return {"id": kwargs["game_id"]}
+        return {"status": "accepted", "game": game, "advanced_user": None}
 
-    monkeypatch.setattr(games_module, "apply_insult_damage", fake_apply_insult_damage)
+    monkeypatch.setattr(games_service, "_apply_current_insult_damage", fake_apply_insult_damage)
 
-    response = app.test_client().post(
-        "/api/games/game-1/insults",
-        headers={"Authorization": "Bearer token"},
-        json={"text": "ты вонючий болотный тапок"},
+    payload = games_service.submit_insult_attempt(
+        {"id": "user-1", "username": "player", "current_level_id": "swamp_troll"},
+        "game-1",
+        "ты вонючий болотный тапок",
     )
 
-    assert response.status_code == 200
-    payload = response.get_json()
+    assert payload["status"] == "accepted"
     assert payload["damage"] == 6
     assert payload["score"] == {
         "source": "model",
@@ -94,3 +82,81 @@ def test_submit_insult_returns_and_persists_model_score(monkeypatch):
     }
     assert captured["damage"] == 6
     assert captured["score_metadata"] == score
+
+
+def test_submit_insult_handles_duplicate_insert_race(monkeypatch):
+    import app.services.games as games_service
+
+    game = {
+        "id": "game-1",
+        "user_id": "user-1",
+        "level_id": "level_1",
+        "monster_hp": 20,
+        "status": "active",
+        "monster_name": "Monster 1",
+        "monster_icon": "1.png",
+        "monster_max_hp": 20,
+        "min_words_per_insult": 1,
+    }
+
+    monkeypatch.setattr(games_service, "_get_game_for_user", lambda game_id, user_id: game)
+    monkeypatch.setattr(
+        games_service,
+        "score_insult",
+        lambda text: {
+            "damage": 6,
+            "source": "model",
+            "toxic": False,
+            "toxicity_score": 0.1,
+            "label": "normal",
+            "signals": {},
+        },
+    )
+    monkeypatch.setattr(
+        games_service,
+        "_apply_current_insult_damage",
+        lambda **kwargs: {"status": "duplicate_insult", "game": game},
+    )
+
+    payload = games_service.submit_insult_attempt(
+        {"id": "user-1", "username": "player", "current_level_id": "level_1"},
+        "game-1",
+        "soggy boot",
+    )
+
+    assert payload["status"] == "duplicate_insult"
+    assert payload["accepted"] is False
+    assert payload["reason"] == "duplicate_insult"
+    assert payload["damage"] == 0
+
+
+def test_submit_insult_rejects_stale_game_session_before_scoring(monkeypatch):
+    import app.services.games as games_service
+
+    game = {
+        "id": "game-1",
+        "user_id": "user-1",
+        "level_id": "level_1",
+        "monster_hp": 0,
+        "status": "active",
+        "monster_name": "Monster 1",
+        "monster_icon": "1.png",
+        "monster_max_hp": 20,
+        "min_words_per_insult": 1,
+    }
+
+    monkeypatch.setattr(games_service, "_get_game_for_user", lambda game_id, user_id: game)
+    monkeypatch.setattr(
+        games_service,
+        "score_insult",
+        lambda text: (_ for _ in ()).throw(AssertionError("stale games must not score")),
+    )
+
+    payload = games_service.submit_insult_attempt(
+        {"id": "user-1", "username": "player", "current_level_id": "level_2"},
+        "game-1",
+        "soggy boot",
+    )
+
+    assert payload["status"] == "stale_game_session"
+    assert payload["game"] == game
