@@ -130,6 +130,58 @@ def test_submit_insult_handles_duplicate_insert_race(monkeypatch):
     assert payload["damage"] == 0
 
 
+def test_submit_insult_returns_russian_monster_replies(monkeypatch):
+    import app.services.games as games_service
+
+    game = {
+        "id": "game-1",
+        "user_id": "user-1",
+        "level_id": "level_1",
+        "monster_hp": 20,
+        "status": "active",
+        "monster_name": "Monster 1",
+        "monster_icon": "1.png",
+        "monster_max_hp": 20,
+        "min_words_per_insult": 3,
+    }
+
+    monkeypatch.setattr(games_service, "_get_game_for_user", lambda game_id, user_id: game)
+
+    too_short = games_service.submit_insult_attempt(
+        {"id": "user-1", "username": "player", "current_level_id": "level_1"},
+        "game-1",
+        "мало слов",
+    )
+
+    assert too_short["monster_reply"] == "Монстр ждет фразу поострее."
+
+    monkeypatch.setattr(
+        games_service,
+        "score_insult",
+        lambda text: {
+            "damage": 0,
+            "source": "model",
+            "toxic": False,
+            "toxicity_score": 0.1,
+            "label": "normal",
+            "signals": {},
+        },
+    )
+    monkeypatch.setattr(
+        games_service,
+        "_apply_current_insult_damage",
+        lambda **kwargs: {"status": "accepted", "game": game, "advanced_user": None},
+    )
+
+    accepted = games_service.submit_insult_attempt(
+        {"id": "user-1", "username": "player", "current_level_id": "level_1"},
+        "game-1",
+        "длинная смешная пустота",
+    )
+
+    assert accepted["monster_reply"] == "Фраза засчитана, но монстр только моргнул."
+
+
 def test_submit_insult_rejects_stale_game_session_before_scoring(monkeypatch):
     import app.services.games as games_service
 

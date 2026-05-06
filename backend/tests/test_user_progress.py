@@ -100,7 +100,7 @@ def test_submit_insult_returns_next_level_saved_monster_hp(monkeypatch):
                 "label": "normal",
                 "signals": {},
             },
-            "monster_reply": "The monster is defeated by the insult.",
+            "monster_reply": "Монстр повержен обзывательством.",
             "advanced_to_level_id": "level_2",
             "advanced_to_monster_hp": 40,
             "game": won_game,

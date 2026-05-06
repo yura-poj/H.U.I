@@ -1,8 +1,14 @@
 from psycopg.errors import UniqueViolation
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.repositories import create_auth_token, create_user, find_user_by_username
+from app.repositories import (
+    RegistrationIpLimitExceeded,
+    create_auth_token,
+    create_user,
+    find_user_by_username,
+)
+from app.security import get_client_ip
 from app.serializers import serialize_user
 
 auth_bp = Blueprint("auth", __name__)
@@ -21,7 +27,17 @@ def register():
         return jsonify({"error": "password_too_short"}), 400
 
     try:
-        user = create_user(username, generate_password_hash(password))
+        user = create_user(username, generate_password_hash(password), get_client_ip())
+    except RegistrationIpLimitExceeded:
+        return (
+            jsonify(
+                {
+                    "error": "registration_ip_limit_exceeded",
+                    "limit": current_app.config.get("REGISTRATION_IP_LIMIT", 3),
+                }
+            ),
+            429,
+        )
     except UniqueViolation:
         return jsonify({"error": "username_taken"}), 409
 

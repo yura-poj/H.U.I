@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5001/api").replace(/\/+$/, "");
 const RECENT_HISTORY_LIMIT = 5;
 
 const username = ref("");
@@ -42,9 +42,27 @@ const hpPercent = computed(() => {
 
   return Math.max(0, Math.round((game.value.monster.hp / game.value.monster.max_hp) * 100));
 });
+const requiredWords = computed(() => game.value?.rules.min_words_per_insult || 0);
+const insultWordCount = computed(() => countWords(insult.value));
+const wordRuleMet = computed(() => {
+  if (!requiredWords.value) {
+    return false;
+  }
+
+  return insultWordCount.value >= requiredWords.value;
+});
 const totalDamage = computed(() => history.value.reduce((sum, item) => sum + item.damage, 0));
 const totalInsults = computed(() => history.value.length);
 const recentHistory = computed(() => history.value.slice(0, RECENT_HISTORY_LIMIT));
+
+class ApiError extends Error {
+  constructor(status, data) {
+    super(data.error || `request_failed_${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
 
 function rememberSession(nextToken, nextUser) {
   token.value = nextToken;
@@ -67,8 +85,13 @@ function clearSession() {
   localStorage.removeItem("hui_user");
 }
 
+function logout() {
+  error.value = "";
+  clearSession();
+}
+
 function pushEvent(entry) {
-  events.value = [entry, ...events.value].slice(0, 8);
+  events.value = [{ id: `${Date.now()}-${events.value.length}`, ...entry }, ...events.value].slice(0, 8);
 }
 
 async function request(path, options = {}) {
@@ -78,11 +101,12 @@ async function request(path, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_URL}${path}`, { ...options, headers });
+  const apiPath = path.startsWith("/") ? path : `/${path}`;
+  const response = await fetch(`${API_URL}${apiPath}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error || `request_failed_${response.status}`);
+    throw new ApiError(response.status, data);
   }
 
   return data;
@@ -120,7 +144,7 @@ async function loadPanels() {
   try {
     await Promise.all([loadHistory(), loadLeaderboard()]);
   } catch (err) {
-    error.value = humanError(err.message);
+    error.value = handleApiError(err);
   } finally {
     panelLoading.value = false;
   }
@@ -138,12 +162,9 @@ async function submitAuth() {
     });
 
     rememberSession(data.token, data.user);
-    activeView.value = "game";
-    await loadLevels();
-    await startGame();
-    await loadPanels();
+    await loadFight();
   } catch (err) {
-    error.value = humanError(err.message);
+    error.value = handleApiError(err);
   } finally {
     loading.value = false;
   }
@@ -160,13 +181,30 @@ async function startGame() {
     game.value = data.game;
     pushEvent({
       type: "system",
-      text: `New fight: ${data.game.monster.name}`,
+      text: `Новый бой: ${data.game.monster.name}`,
       damage: null,
     });
   } catch (err) {
-    error.value = humanError(err.message);
+    error.value = handleApiError(err);
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadFight() {
+  error.value = "";
+  activeView.value = "game";
+  resetMonsterEffects();
+
+  try {
+    await loadLevels();
+    await startGame();
+
+    if (game.value) {
+      await loadPanels();
+    }
+  } catch (err) {
+    error.value = handleApiError(err);
   }
 }
 
@@ -187,10 +225,11 @@ async function submitInsult() {
 
     game.value = data.game;
     insult.value = "";
+    const damage = data.damage ?? 0;
     pushEvent({
-      type: data.accepted ? "hit" : "blocked",
+      type: data.accepted && damage > 0 ? "hit" : data.accepted ? "no-damage" : "blocked",
       text,
-      damage: data.damage,
+      damage,
       score: data.score,
       reason: data.reason,
       reply: data.monster_reply,
@@ -217,48 +256,162 @@ async function submitInsult() {
       await loadPanels();
     }
   } catch (err) {
-    error.value = humanError(err.message);
+    if (err instanceof ApiError && err.data?.game) {
+      game.value = err.data.game;
+      pushEvent({
+        type: "blocked",
+        text,
+        damage: 0,
+        reason: err.data.reason || err.data.error,
+        reply: err.data.monster_reply,
+      });
+    }
+
+    error.value = handleApiError(err);
   } finally {
     loading.value = false;
   }
 }
 
-function humanError(code) {
+function humanError(code, data = {}) {
   const messages = {
-    invalid_credentials: "Wrong username or password.",
-    username_taken: "This username is already taken.",
-    username_too_short: "Username must be at least 3 characters.",
-    password_too_short: "Password must be at least 6 characters.",
-    authentication_required: "Log in to continue.",
-    invalid_token: "Session expired. Log in again.",
-    game_not_found: "Game was not found.",
-    game_already_finished: "This monster is already defeated.",
+    invalid_credentials: "Неверное имя игрока или пароль.",
+    username_taken: "Это имя игрока уже занято.",
+    username_too_short: "Имя игрока должно быть не короче 3 символов.",
+    password_too_short: "Пароль должен быть не короче 6 символов.",
+    authentication_required: "Войдите, чтобы продолжить.",
+    invalid_token: "Сессия истекла. Войдите снова.",
+    game_not_found: "Бой не найден.",
+    game_already_finished: "Этот монстр уже побежден.",
+    insult_required: "Введите обзывательство.",
+    min_words: "Слишком коротко для этого монстра.",
+    duplicate_insult: "Это обзывательство уже использовалось.",
+    stale_game_session: "Этот бой устарел. Откройте текущего монстра.",
   };
 
+  if (code === "rate_limit_exceeded") {
+    const seconds = data.retry_after_seconds;
+    return seconds
+      ? `Слишком много запросов. Повторите через ${seconds} секунд.`
+      : "Слишком много запросов. Повторите позже.";
+  }
+
+  if (code === "registration_ip_limit_exceeded") {
+    const limit = data.limit || "несколько";
+    return `С этого адреса уже создано ${limit} игрока за сутки. Попробуйте завтра.`;
+  }
+
   return messages[code] || code;
+}
+
+function isAuthSessionError(err) {
+  return err instanceof ApiError
+    && err.status === 401
+    && ["authentication_required", "invalid_token"].includes(err.data?.error);
+}
+
+function handleApiError(err) {
+  if (isAuthSessionError(err)) {
+    const message = humanError(err.data.error, err.data);
+    clearSession();
+    return message;
+  }
+
+  return humanError(err.message, err.data);
+}
+
+function countWords(text) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function eventTitle(event) {
+  if (event.type === "hit") {
+    return `Попадание на ${event.damage}/10`;
+  }
+
+  if (event.type === "no-damage") {
+    return "Фраза засчитана, но не сработала";
+  }
+
+  if (event.type === "system") {
+    return "Бой";
+  }
+
+  const titles = {
+    min_words: "Нужно больше слов",
+    duplicate_insult: "Повтор не засчитан",
+    stale_game_session: "Бой устарел",
+    game_already_finished: "Монстр уже побежден",
+  };
+
+  return titles[event.reason] || "Без урона";
+}
+
+function eventDescription(event) {
+  if (event.type === "hit") {
+    return event.advancedTo
+      ? `Монстр пал. Следующий уровень: ${event.advancedTo}.`
+      : event.reply || "Монстр получил словесный урон.";
+  }
+
+  if (event.type === "no-damage") {
+    return event.reply || "Монстр не получил урон.";
+  }
+
+  if (event.reason === "min_words") {
+    return "Это обзывательство слишком короткое для правила уровня.";
+  }
+
+  if (event.reason === "duplicate_insult") {
+    return "Этот игрок уже наносил урон такой фразой. Жизни монстра не изменились.";
+  }
+
+  if (event.reason === "stale_game_session") {
+    return "Сохранен другой текущий бой. Обновите бой с текущим монстром.";
+  }
+
+  if (event.reason === "game_already_finished") {
+    return "Переходите к следующему монстру.";
+  }
+
+  return event.reply || event.text;
 }
 
 async function openView(view) {
   activeView.value = view;
 
-  if (view === "history") {
-    await loadHistory();
-  }
+  try {
+    if (view === "history") {
+      await loadHistory();
+    }
 
-  if (view === "leaderboard") {
-    await loadLeaderboard();
+    if (view === "leaderboard") {
+      await loadLeaderboard();
+    }
+  } catch (err) {
+    error.value = handleApiError(err);
   }
 }
 
 async function setLeaderboardSection(section) {
   leaderboardSection.value = section;
   leaderboardPage.value = 1;
-  await loadLeaderboard();
+
+  try {
+    await loadLeaderboard();
+  } catch (err) {
+    error.value = handleApiError(err);
+  }
 }
 
 async function changeLeaderboardPage(delta) {
   leaderboardPage.value = Math.max(1, leaderboardPage.value + delta);
-  await loadLeaderboard();
+
+  try {
+    await loadLeaderboard();
+  } catch (err) {
+    error.value = handleApiError(err);
+  }
 }
 
 function useMonsterFallback(event) {
@@ -289,7 +442,7 @@ function playMonsterResponse(data) {
   floatingDamage.value = null;
   monsterSpeech.value = data.monster_reply || "";
 
-  if (data.accepted) {
+  if (data.accepted && (data.damage ?? 0) > 0) {
     window.requestAnimationFrame(() => {
       monsterHit.value = true;
       floatingDamage.value = {
@@ -318,13 +471,7 @@ onMounted(async () => {
     return;
   }
 
-  try {
-    await loadLevels();
-    await startGame();
-    await loadPanels();
-  } catch (err) {
-    error.value = humanError(err.message);
-  }
+  await loadFight();
 });
 
 onBeforeUnmount(() => {
@@ -337,36 +484,40 @@ onBeforeUnmount(() => {
     <section class="stage">
       <div v-if="!isAuthed" class="topbar">
         <div>
-          <p class="eyebrow">Monster insult arena</p>
-          <h1>Break the monster with words</h1>
+          <p class="eyebrow">Арена монстров</p>
+          <h1>Победи монстра словами</h1>
         </div>
       </div>
 
       <div v-if="!isAuthed" class="auth-layout">
         <form class="auth-panel" @submit.prevent="submitAuth">
-          <div class="tabs" role="tablist" aria-label="Authentication mode">
+          <div class="tabs" role="tablist" aria-label="Режим входа">
             <button
               type="button"
+              role="tab"
+              :aria-selected="mode === 'login'"
               :class="{ active: mode === 'login' }"
               @click="mode = 'login'"
             >
-              Login
+              Вход
             </button>
             <button
               type="button"
+              role="tab"
+              :aria-selected="mode === 'register'"
               :class="{ active: mode === 'register' }"
               @click="mode = 'register'"
             >
-              Register
+              Регистрация
             </button>
           </div>
 
           <label>
-            Username
+            Имя игрока
             <input v-model="username" autocomplete="username" name="username" required />
           </label>
           <label>
-            Password
+            Пароль
             <input
               v-model="password"
               autocomplete="current-password"
@@ -378,7 +529,7 @@ onBeforeUnmount(() => {
 
           <p v-if="error" class="error">{{ error }}</p>
           <button class="primary-button" :disabled="loading" type="submit">
-            {{ loading ? "Working..." : mode === "register" ? "Create player" : "Enter arena" }}
+            {{ loading ? "Работаем..." : mode === "register" ? "Создать игрока" : "Войти на арену" }}
           </button>
         </form>
       </div>
@@ -386,6 +537,12 @@ onBeforeUnmount(() => {
       <template v-else>
         <div v-if="activeView === 'game'" class="game-dashboard">
           <aside class="stats-panel">
+            <div class="player-strip">
+              <span>{{ user?.username }}</span>
+              <button class="logout-button inline-link-button" type="button" @click="logout">
+                Выйти
+              </button>
+            </div>
             <div class="score-total">
               <p>Всего очков</p>
               <strong>{{ totalDamage }}</strong>
@@ -395,14 +552,25 @@ onBeforeUnmount(() => {
 
           <section class="fight">
             <div v-if="!game" class="empty-fight">
-              Готовим бой...
+              <template v-if="error">
+                <p class="error">{{ error }}</p>
+                <button class="retry-fight primary-button" type="button" @click="loadFight">
+                  Повторить
+                </button>
+              </template>
+              <template v-else>
+                Готовим бой...
+              </template>
             </div>
 
             <template v-else>
               <div class="level-header">
                 <p class="label">{{ currentLevel?.title || game.level_id }}</p>
-                <h2>Описание уровня</h2>
-                <p>{{ currentLevel?.description }}</p>
+                <h2>{{ currentLevel?.title || game.level_id }} · {{ game.monster.name }}</h2>
+                <div class="level-meta">
+                  <span>{{ currentLevel?.description }}</span>
+                  <strong class="rule-pill">Минимум {{ requiredWords }} слов</strong>
+                </div>
               </div>
 
               <div class="arena">
@@ -431,20 +599,52 @@ onBeforeUnmount(() => {
 
                 <div class="monster-info">
                   <strong>{{ game.monster.name }}</strong>
-                  <span>HP {{ game.monster.hp }} / {{ game.monster.max_hp }}</span>
+                  <span>Жизни {{ game.monster.hp }} / {{ game.monster.max_hp }}</span>
                 </div>
 
-                <div class="hp-bar" aria-label="Monster HP">
+                <div
+                  class="hp-bar"
+                  role="progressbar"
+                  aria-label="Жизни монстра"
+                  aria-valuemin="0"
+                  :aria-valuemax="game.monster.max_hp"
+                  :aria-valuenow="game.monster.hp"
+                >
                   <span :style="{ width: `${hpPercent}%` }"></span>
                 </div>
 
+                <section class="combat-log" aria-live="polite" aria-label="Журнал боя">
+                  <article
+                    v-for="event in events"
+                    :key="event.id"
+                    class="combat-event"
+                    :class="event.type"
+                  >
+                    <div>
+                      <strong>{{ eventTitle(event) }}</strong>
+                      <p>{{ eventDescription(event) }}</p>
+                    </div>
+                    <span v-if="event.damage !== null && event.damage !== undefined">
+                      {{ event.damage }} урона
+                    </span>
+                  </article>
+                  <p v-if="events.length === 0" class="combat-empty">
+                    Журнал боя появится после первого обзывательства.
+                  </p>
+                </section>
+
                 <form class="insult-form" @submit.prevent="submitInsult">
                   <label>
-                    Обзывательство
+                    <span class="field-top">
+                      <span>Обзывательство</span>
+                      <span class="word-counter" :class="{ met: wordRuleMet }">
+                        {{ insultWordCount }} / {{ requiredWords }} слов
+                      </span>
+                    </span>
                     <textarea
                       v-model="insult"
                       :disabled="game.status !== 'active'"
-                      :placeholder="`At least ${game.rules.min_words_per_insult} words`"
+                      :placeholder="`Минимум ${requiredWords} слов. Абсурднее — лучше.`"
                       rows="4"
                     ></textarea>
                   </label>
@@ -462,8 +662,10 @@ onBeforeUnmount(() => {
               </div>
 
               <div v-if="game.status === 'won'" class="victory-band">
-                <strong>Monster defeated.</strong>
-                <button class="ghost-button" type="button" @click="startGame">Next fight</button>
+                <strong>Монстр побежден.</strong>
+                <button class="ghost-button" type="button" @click="startGame">
+                  К следующему монстру
+                </button>
               </div>
             </template>
           </section>
@@ -492,7 +694,7 @@ onBeforeUnmount(() => {
             <article v-for="item in recentHistory" :key="item.id" class="event-card">
               <div class="event-top">
                 <strong>{{ item.damage }}/10</strong>
-                <small>{{ item.monster_name || item.level_id || "Unknown monster" }}</small>
+                <small>{{ item.monster_name || item.level_id || "Неизвестный монстр" }}</small>
               </div>
               <p class="event-text">{{ item.text }}</p>
             </article>
@@ -519,13 +721,13 @@ onBeforeUnmount(() => {
             <article v-for="item in history" :key="item.id" class="history-row">
               <div>
                 <p class="event-text">{{ item.text }}</p>
-                <small>{{ item.monster_name || item.level_id || "Unknown monster" }}</small>
+                <small>{{ item.monster_name || item.level_id || "Неизвестный монстр" }}</small>
               </div>
               <div class="score-badges">
                 <span>{{ item.damage }}/10 урона</span>
-                <span>{{ item.score?.source || "unknown" }}</span>
+                <span>{{ item.score?.source || "неизвестно" }}</span>
                 <span v-if="item.score?.toxic" class="toxic">
-                  {{ item.score.label || "toxic" }}
+                  {{ item.score.label || "токсично" }}
                 </span>
               </div>
             </article>
@@ -547,9 +749,11 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="leaderboard-switch">
+          <div class="leaderboard-switch" role="tablist" aria-label="Раздел лидерборда">
             <button
               type="button"
+              role="tab"
+              :aria-selected="leaderboardSection === 'top'"
               :class="{ active: leaderboardSection === 'top' }"
               @click="setLeaderboardSection('top')"
             >
@@ -557,6 +761,8 @@ onBeforeUnmount(() => {
             </button>
             <button
               type="button"
+              role="tab"
+              :aria-selected="leaderboardSection === 'all'"
               :class="{ active: leaderboardSection === 'all' }"
               @click="setLeaderboardSection('all')"
             >
@@ -575,7 +781,12 @@ onBeforeUnmount(() => {
 
           <div v-if="leaderboard.length === 0" class="empty-state">Пока нет игроков.</div>
           <div v-else class="leaderboard-list">
-            <article v-for="leader in leaderboard" :key="leader.username" class="leader-row">
+            <article
+              v-for="leader in leaderboard"
+              :key="leader.username"
+              class="leader-row"
+              :class="{ current: leader.username === user?.username }"
+            >
               <strong>#{{ leader.rank }}</strong>
               <div>
                 <p>{{ leader.username }}</p>
