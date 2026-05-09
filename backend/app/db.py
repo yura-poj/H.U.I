@@ -78,6 +78,7 @@ def init_db() -> None:
                     id text primary key,
                     username text not null unique,
                     password_hash text not null,
+                    registration_ip text,
                     current_level_id text not null references levels(id),
                     current_monster_hp integer not null default 20 check (current_monster_hp >= 0),
                     created_at timestamptz not null default now()
@@ -88,6 +89,29 @@ def init_db() -> None:
                 """
                 alter table users
                 add column if not exists current_monster_hp integer
+                """
+            )
+            cursor.execute(
+                """
+                alter table users
+                add column if not exists registration_ip text
+                """
+            )
+            cursor.execute(
+                """
+                create table if not exists registration_ip_limits (
+                    ip_address text primary key,
+                    successful_registrations integer not null default 0
+                        check (successful_registrations >= 0),
+                    created_at timestamptz not null default now(),
+                    updated_at timestamptz not null default now()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                create index if not exists users_registration_ip_idx
+                on users(registration_ip)
                 """
             )
             cursor.execute(

@@ -26,7 +26,7 @@ def submit_insult_attempt(user: dict, game_id: str, text: str) -> dict[str, Any]
             "required_words": required_words,
             "actual_words": actual_words,
             "damage": 0,
-            "monster_reply": "The monster waits for a sharper insult.",
+            "monster_reply": "Монстр ждет фразу поострее.",
             "game": game,
         }
 
@@ -48,7 +48,7 @@ def submit_insult_attempt(user: dict, game_id: str, text: str) -> dict[str, Any]
             "accepted": False,
             "reason": "duplicate_insult",
             "damage": 0,
-            "monster_reply": "The monster has already heard that one.",
+            "monster_reply": "Монстр уже слышал эту фразу.",
             "game": result.get("game", game),
         }
 

@@ -10,11 +10,14 @@ def create_app():
     from app.routes.insults import insults_bp
     from app.routes.levels import levels_bp
     from app.routes.leaderboard import leaderboard_bp
+    from app.security import configure_rate_limiting
 
     app = Flask(__name__)
+    app.config.from_object(Config)
     CORS(app, origins=Config.CORS_ORIGINS)
 
     init_db()
+    configure_rate_limiting(app)
 
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(games_bp, url_prefix="/api")

@@ -3,38 +3,78 @@ import uuid
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
+from app.config import Config
 from app.db import get_connection
 
 
-def create_user(username: str, password_hash: str) -> dict:
+class RegistrationIpLimitExceeded(Exception):
+    pass
+
+
+def create_user(username: str, password_hash: str, registration_ip: str | None = None) -> dict:
     first_level = get_first_level()
 
     with get_connection() as connection:
         try:
             with connection.cursor() as cursor:
+                if registration_ip:
+                    cursor.execute(
+                        """
+                        insert into registration_ip_limits (
+                            ip_address,
+                            successful_registrations,
+                            updated_at
+                        )
+                        values (%s, 1, now())
+                        on conflict (ip_address) do update set
+                            successful_registrations = case
+                                when registration_ip_limits.updated_at <=
+                                    now() - make_interval(secs => %s)
+                                    then 1
+                                else registration_ip_limits.successful_registrations + 1
+                            end,
+                            updated_at = now()
+                        where registration_ip_limits.updated_at <=
+                                now() - make_interval(secs => %s)
+                            or registration_ip_limits.successful_registrations < %s
+                        returning successful_registrations
+                        """,
+                        (
+                            registration_ip,
+                            Config.REGISTRATION_IP_WINDOW_SECONDS,
+                            Config.REGISTRATION_IP_WINDOW_SECONDS,
+                            Config.REGISTRATION_IP_LIMIT,
+                        ),
+                    )
+
+                    if cursor.fetchone() is None:
+                        raise RegistrationIpLimitExceeded(registration_ip)
+
                 cursor.execute(
                     """
                     insert into users (
                         id,
                         username,
                         password_hash,
+                        registration_ip,
                         current_level_id,
                         current_monster_hp
                     )
-                    values (%s, %s, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s)
                     returning id, username, current_level_id, current_monster_hp, created_at
                     """,
                     (
                         str(uuid.uuid4()),
                         username,
                         password_hash,
+                        registration_ip,
                         first_level["id"],
                         first_level["monster_hp"],
                     ),
                 )
                 user = cursor.fetchone()
             connection.commit()
-        except UniqueViolation:
+        except (RegistrationIpLimitExceeded, UniqueViolation):
             connection.rollback()
             raise
 

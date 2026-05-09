@@ -119,6 +119,12 @@ def short_token_ratio(words: list[str]) -> float:
     return sum(1 for word in words if len(word) <= 3) / len(words)
 
 
+def one_char_token_ratio(words: list[str]) -> float:
+    if not words:
+        return 1.0
+    return sum(1 for word in words if len(word) == 1) / len(words)
+
+
 def meaningful_word_ratio(words: list[str]) -> float:
     if not words:
         return 0.0
@@ -135,7 +141,15 @@ def looks_disconnected(
 ) -> bool:
     if len(words) < 5:
         return False
-    if compound_bonus > 0 or mild_hits or absurd_hits >= 2 or comparisons:
+    has_creative_anchor = compound_bonus > 0 or absurd_hits >= 2 or comparisons
+    mostly_random_fillers = (
+        short_token_ratio(words) >= 0.7
+        and one_char_token_ratio(words) >= 0.45
+        and meaningful_word_ratio(words) <= 0.3
+    )
+    if mostly_random_fillers and not has_creative_anchor:
+        return True
+    if has_creative_anchor or mild_hits:
         return False
     if obscene_hits > 1:
         return False

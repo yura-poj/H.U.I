@@ -79,15 +79,15 @@ def _model_artifact() -> dict[str, Any]:
 
 def monster_reply(damage: int, won: bool) -> str:
     if won:
-        return "The monster is defeated by the insult."
+        return "Монстр повержен обзывательством."
 
     if damage == 0:
-        return "The monster barely notices."
+        return "Фраза засчитана, но монстр только моргнул."
 
     if damage < 3:
-        return "The monster frowns, but stays standing."
+        return "Монстр хмурится, но пока стоит."
 
     if damage < 7:
-        return "The monster staggers from the insult."
+        return "Монстра качнуло от словесного удара."
 
-    return "The monster looks deeply offended."
+    return "Монстр выглядит глубоко оскорбленным."
