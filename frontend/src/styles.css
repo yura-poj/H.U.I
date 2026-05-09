@@ -239,10 +239,10 @@ textarea:focus {
   flex: 1;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 170px minmax(760px, 1fr) 320px;
-  grid-template-rows: 96px 1fr;
-  column-gap: 20px;
-  padding: 0;
+  grid-template-columns: minmax(620px, 1fr) 360px;
+  grid-template-rows: 1fr;
+  gap: 18px;
+  padding: 14px 0 0 16px;
 }
 
 .game-dashboard > * {
@@ -250,20 +250,20 @@ textarea:focus {
 }
 
 .stats-panel {
-  grid-column: 1;
-  grid-row: 1;
-  min-height: 88px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
+  min-height: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(31, 122, 101, 0.18);
+  border-radius: 0;
   border-color: rgba(31, 122, 101, 0.28);
   background:
     linear-gradient(150deg, rgba(31, 122, 101, 0.12), rgba(255, 255, 255, 0.92)),
     #ffffff;
-  overflow: hidden;
+  box-shadow: none;
+  overflow: visible;
 }
 
 .score-total {
-  padding: 10px 13px;
+  padding: 12px 14px 14px;
 }
 
 .player-strip {
@@ -291,16 +291,16 @@ textarea:focus {
 .score-total p {
   margin: 0;
   color: #17211c;
-  font-size: 1.02rem;
+  font-size: 0.95rem;
   font-weight: 900;
   line-height: 1.18;
 }
 
 .score-total strong {
   display: block;
-  margin-top: 4px;
+  margin-top: 5px;
   color: #1f7a65;
-  font-size: 1.35rem;
+  font-size: 1.75rem;
   line-height: 1;
 }
 
@@ -312,13 +312,14 @@ textarea:focus {
 }
 
 .fight {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  min-height: 100vh;
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 14px;
-  padding: 14px 0 34px;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  gap: 10px;
+  padding: 0 0 18px;
 }
 
 .empty-fight,
@@ -338,12 +339,12 @@ textarea:focus {
 }
 
 .level-header {
-  width: min(920px, 100%);
-  min-height: 88px;
+  width: min(900px, 100%);
+  min-height: 0;
   justify-self: center;
   display: grid;
-  gap: 8px;
-  padding: 14px 22px;
+  gap: 6px;
+  padding: 12px 18px;
   border-color: rgba(31, 122, 101, 0.22);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 245, 0.94));
@@ -356,7 +357,8 @@ textarea:focus {
 }
 
 .level-header h2 {
-  font-size: clamp(2.05rem, 3.2vw, 3rem);
+  font-size: clamp(1.55rem, 2.35vw, 2.15rem);
+  line-height: 1.06;
 }
 
 .level-meta {
@@ -381,14 +383,15 @@ textarea:focus {
 
 .arena {
   position: relative;
-  width: min(1040px, 100%);
-  min-height: 650px;
+  width: min(980px, 100%);
+  min-height: 0;
   justify-self: center;
   display: grid;
-  grid-template-rows: minmax(310px, 1fr) auto auto auto auto;
+  grid-template-rows: auto auto;
+  align-content: start;
   align-items: center;
-  gap: 12px;
-  padding: 32px 60px 0;
+  gap: 14px;
+  padding: 22px 32px 0;
   border-color: rgba(31, 122, 101, 0.2);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.94)),
@@ -401,7 +404,7 @@ textarea:focus {
   position: absolute;
   left: 10%;
   right: 10%;
-  bottom: 188px;
+  bottom: 126px;
   height: 1px;
   content: "";
   background: linear-gradient(90deg, transparent, rgba(23, 33, 28, 0.18), transparent);
@@ -412,15 +415,17 @@ textarea:focus {
   justify-self: center;
   display: grid;
   justify-items: center;
-  gap: 8px;
+  gap: 10px;
+  width: 100%;
 }
 
 .monster-art {
   position: relative;
   width: min(620px, 100%);
-  height: 310px;
+  height: clamp(330px, 43vh, 430px);
   display: grid;
   place-items: center;
+  padding: 14px;
   border-radius: 12px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.45), transparent),
@@ -428,7 +433,7 @@ textarea:focus {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.55),
     0 16px 34px rgba(23, 33, 28, 0.12);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .monster-placeholder {
@@ -436,9 +441,12 @@ textarea:focus {
 }
 
 .monster-art img {
-  max-width: 96%;
-  max-height: 96%;
+  width: auto;
+  max-width: calc(100% - 48px);
+  height: calc(100% - 48px);
+  max-height: calc(100% - 48px);
   object-fit: contain;
+  object-position: center center;
   filter: drop-shadow(0 14px 18px rgba(23, 33, 28, 0.18));
   transition: filter 160ms ease, transform 160ms ease;
   z-index: 1;
@@ -479,6 +487,14 @@ textarea:focus {
   box-shadow: 0 12px 24px rgba(183, 53, 44, 0.28);
 }
 
+.monster-status {
+  position: relative;
+  z-index: 2;
+  width: min(620px, 100%);
+  display: grid;
+  gap: 7px;
+}
+
 .damage-pop-enter-active {
   animation: damage-float 900ms ease-out both;
 }
@@ -494,11 +510,11 @@ textarea:focus {
 .monster-info {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 10px;
   margin-top: 0;
   color: #17211c;
-  font-size: 1.12rem;
+  font-size: 0.96rem;
   font-weight: 900;
 }
 
@@ -533,7 +549,7 @@ textarea:focus {
 
 .hp-bar {
   width: min(620px, 100%);
-  height: 16px;
+  height: 14px;
   justify-self: center;
   overflow: hidden;
   border-radius: 999px;
@@ -551,13 +567,12 @@ textarea:focus {
 .combat-log {
   position: relative;
   z-index: 1;
-  width: min(720px, 100%);
-  justify-self: center;
+  width: 100%;
+  justify-self: stretch;
   display: grid;
   gap: 6px;
-  max-height: 142px;
   overflow: auto;
-  padding: 8px 0;
+  padding: 0;
 }
 
 .combat-event,
@@ -619,12 +634,12 @@ textarea:focus {
 .insult-form {
   position: relative;
   z-index: 1;
-  width: min(720px, 100%);
+  width: min(620px, 100%);
   justify-self: center;
   display: grid;
   gap: 6px;
-  margin-top: auto;
-  padding: 12px 22px 0;
+  margin-top: 0;
+  padding: 12px 16px 0;
   border: 1px solid rgba(31, 122, 101, 0.18);
   border-bottom: 0;
   border-radius: 12px 12px 0 0;
@@ -672,9 +687,12 @@ textarea:focus {
 }
 
 .score-history {
-  grid-column: 3;
-  grid-row: 1 / span 2;
-  min-height: 100vh;
+  grid-column: 2;
+  grid-row: 1;
+  min-height: calc(100vh - 14px);
+  max-height: calc(100vh - 14px);
+  position: sticky;
+  top: 0;
   border: 1px solid rgba(23, 33, 28, 0.13);
   border-top: 0;
   border-right: 0;
@@ -722,14 +740,20 @@ textarea:focus {
 
 .panel-heading {
   justify-content: space-between;
-  min-height: 56px;
-  padding: 14px 12px 8px;
+  min-height: 50px;
+  padding: 12px 12px 8px;
 }
 
 .panel-heading p {
   margin: 0;
-  font-size: 1.12rem;
+  font-size: 1.02rem;
   font-weight: 800;
+}
+
+.panel-heading-compact {
+  min-height: 40px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(23, 33, 28, 0.08);
 }
 
 .panel-heading span {
@@ -752,6 +776,16 @@ textarea:focus {
   border-color: rgba(23, 33, 28, 0.1);
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 8px 20px rgba(18, 27, 22, 0.05);
+}
+
+.side-combat-log {
+  max-height: 260px;
+  padding: 0 12px 14px;
+}
+
+.side-combat-log .combat-event,
+.side-combat-log .combat-empty {
+  background: rgba(255, 255, 255, 0.84);
 }
 
 .event-text {
@@ -959,7 +993,7 @@ textarea:focus {
   }
 }
 
-@media (max-width: 1290px) {
+@media (max-width: 1050px) {
   .game-dashboard {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
@@ -973,8 +1007,16 @@ textarea:focus {
     grid-column: 1;
     grid-row: auto;
     min-height: auto;
+    max-height: none;
+    position: static;
     border: 1px solid rgba(23, 33, 28, 0.13);
     border-radius: 8px;
+  }
+
+  .stats-panel {
+    border: 0;
+    border-bottom: 1px solid rgba(31, 122, 101, 0.18);
+    border-radius: 8px 8px 0 0;
   }
 
   .fight {
@@ -982,12 +1024,11 @@ textarea:focus {
   }
 
   .arena {
-    min-height: 440px;
     padding: 28px 20px 0;
   }
 
   .monster-art {
-    height: 260px;
+    height: clamp(290px, 44vw, 380px);
   }
 }
 
@@ -1010,7 +1051,7 @@ textarea:focus {
 
   .monster-art {
     width: 100%;
-    height: 220px;
+    height: clamp(260px, 72vw, 330px);
   }
 
   .arena {
@@ -1023,7 +1064,7 @@ textarea:focus {
   }
 
   .level-header h2 {
-    font-size: 1.8rem;
+    font-size: 1.45rem;
   }
 
   .primary-button,

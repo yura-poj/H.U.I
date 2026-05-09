@@ -373,4 +373,40 @@ describe("App API contract behavior", () => {
     expect(wrapper.text()).toContain("3 / 3 слов");
     expect(submit.attributes("disabled")).toBeUndefined();
   });
+
+  it("submits the insult when Enter is pressed in the textarea", async () => {
+    const fetchMock = createFetch({
+      "POST /api/games/game-1/insults": () => response({
+        accepted: true,
+        damage: 4,
+        score: {
+          source: "model",
+          toxic: false,
+          toxicity_score: 0.1,
+          label: "normal",
+          signals: {},
+        },
+        monster_reply: "Монстр поперхнулся.",
+        game: game({
+          monster: {
+            hp: 16,
+          },
+        }),
+      }),
+    });
+    const { wrapper } = await mountAuthed({ fetchMock });
+    const textarea = wrapper.find("textarea");
+
+    await textarea.setValue("один два три");
+    await textarea.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+
+    const insultRequest = fetchMock.mock.calls.find(([url, options = {}]) => (
+      String(url).endsWith("/api/games/game-1/insults") && options.method === "POST"
+    ));
+
+    expect(insultRequest).toBeDefined();
+    expect(JSON.parse(insultRequest[1].body)).toEqual({ text: "один два три" });
+    expect(wrapper.text()).toContain("Попадание на 4/10");
+  });
 });

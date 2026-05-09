@@ -209,7 +209,7 @@ async function loadFight() {
 }
 
 async function submitInsult() {
-  if (!game.value || !insult.value.trim()) {
+  if (!game.value || loading.value || game.value.status !== "active" || !insult.value.trim()) {
     return;
   }
 
@@ -536,20 +536,6 @@ onBeforeUnmount(() => {
 
       <template v-else>
         <div v-if="activeView === 'game'" class="game-dashboard">
-          <aside class="stats-panel">
-            <div class="player-strip">
-              <span>{{ user?.username }}</span>
-              <button class="logout-button inline-link-button" type="button" @click="logout">
-                Выйти
-              </button>
-            </div>
-            <div class="score-total">
-              <p>Всего очков</p>
-              <strong>{{ totalDamage }}</strong>
-              <span>{{ totalInsults }} обзывательств</span>
-            </div>
-          </aside>
-
           <section class="fight">
             <div v-if="!game" class="empty-fight">
               <template v-if="error">
@@ -592,46 +578,27 @@ onBeforeUnmount(() => {
                       </span>
                     </Transition>
                   </div>
+                  <div class="monster-status">
+                    <div class="monster-info">
+                      <strong>{{ game.monster.name }}</strong>
+                      <span>Жизни {{ game.monster.hp }} / {{ game.monster.max_hp }}</span>
+                    </div>
+
+                    <div
+                      class="hp-bar"
+                      role="progressbar"
+                      aria-label="Жизни монстра"
+                      aria-valuemin="0"
+                      :aria-valuemax="game.monster.max_hp"
+                      :aria-valuenow="game.monster.hp"
+                    >
+                      <span :style="{ width: `${hpPercent}%` }"></span>
+                    </div>
+                  </div>
                   <Transition name="speech-pop">
                     <p v-if="monsterSpeech" class="monster-speech">{{ monsterSpeech }}</p>
                   </Transition>
                 </div>
-
-                <div class="monster-info">
-                  <strong>{{ game.monster.name }}</strong>
-                  <span>Жизни {{ game.monster.hp }} / {{ game.monster.max_hp }}</span>
-                </div>
-
-                <div
-                  class="hp-bar"
-                  role="progressbar"
-                  aria-label="Жизни монстра"
-                  aria-valuemin="0"
-                  :aria-valuemax="game.monster.max_hp"
-                  :aria-valuenow="game.monster.hp"
-                >
-                  <span :style="{ width: `${hpPercent}%` }"></span>
-                </div>
-
-                <section class="combat-log" aria-live="polite" aria-label="Журнал боя">
-                  <article
-                    v-for="event in events"
-                    :key="event.id"
-                    class="combat-event"
-                    :class="event.type"
-                  >
-                    <div>
-                      <strong>{{ eventTitle(event) }}</strong>
-                      <p>{{ eventDescription(event) }}</p>
-                    </div>
-                    <span v-if="event.damage !== null && event.damage !== undefined">
-                      {{ event.damage }} урона
-                    </span>
-                  </article>
-                  <p v-if="events.length === 0" class="combat-empty">
-                    Журнал боя появится после первого обзывательства.
-                  </p>
-                </section>
 
                 <form class="insult-form" @submit.prevent="submitInsult">
                   <label>
@@ -646,6 +613,7 @@ onBeforeUnmount(() => {
                       :disabled="game.status !== 'active'"
                       :placeholder="`Минимум ${requiredWords} слов. Абсурднее — лучше.`"
                       rows="4"
+                      @keydown.enter.exact.prevent="submitInsult"
                     ></textarea>
                   </label>
                   <div class="action-row">
@@ -671,6 +639,20 @@ onBeforeUnmount(() => {
           </section>
 
           <aside class="score-history">
+            <div class="stats-panel">
+              <div class="player-strip">
+                <span>{{ user?.username }}</span>
+                <button class="logout-button inline-link-button" type="button" @click="logout">
+                  Выйти
+                </button>
+              </div>
+              <div class="score-total">
+                <p>Всего очков</p>
+                <strong>{{ totalDamage }}</strong>
+                <span>{{ totalInsults }} обзывательств</span>
+              </div>
+            </div>
+
             <div class="side-actions">
               <button class="rank-tab" type="button" @click="openView('leaderboard')">
                 Место в лидерборде
@@ -682,7 +664,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="panel-heading">
-              <p>История с очками</p>
+              <p>История обзывательств</p>
               <button class="inline-link-button" type="button" @click="openView('history')">
                 Вся история
               </button>
@@ -698,6 +680,29 @@ onBeforeUnmount(() => {
               </div>
               <p class="event-text">{{ item.text }}</p>
             </article>
+
+            <div class="panel-heading panel-heading-compact">
+              <p>Журнал боя</p>
+            </div>
+            <section class="combat-log side-combat-log" aria-live="polite" aria-label="Журнал боя">
+              <article
+                v-for="event in events"
+                :key="event.id"
+                class="combat-event"
+                :class="event.type"
+              >
+                <div>
+                  <strong>{{ eventTitle(event) }}</strong>
+                  <p>{{ eventDescription(event) }}</p>
+                </div>
+                <span v-if="event.damage !== null && event.damage !== undefined">
+                  {{ event.damage }} урона
+                </span>
+              </article>
+              <p v-if="events.length === 0" class="combat-empty">
+                Журнал боя появится после первого обзывательства.
+              </p>
+            </section>
           </aside>
         </div>
 
