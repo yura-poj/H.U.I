@@ -26,16 +26,16 @@ services:
       - run:app
 
   frontend:
+    profiles:
+      - dev-only
     build:
       context: ./frontend
-      target: production
+      target: build
       args:
         VITE_API_URL: ${PROD_VITE_API_URL:-/api}
-    restart: unless-stopped
+    restart: "no"
     environment: !reset []
-    ports: !override
-      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
+    ports: !override []
     volumes: !reset []
-    depends_on:
-      - backend
+    depends_on: !reset []
     command: null
