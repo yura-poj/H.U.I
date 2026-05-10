@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import uuid
 
 from psycopg.errors import UniqueViolation
@@ -96,6 +98,9 @@ def find_user_by_username(username: str) -> dict | None:
 
 
 def find_user_by_token(token: str) -> dict | None:
+    if not token:
+        return None
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -107,28 +112,33 @@ def find_user_by_token(token: str) -> dict | None:
                        users.created_at
                 from auth_tokens
                 join users on users.id = auth_tokens.user_id
-                where auth_tokens.token = %s
+                where auth_tokens.token_hash = %s
+                    and auth_tokens.expires_at > now()
                 """,
-                (token,),
+                (_hash_auth_token(token),),
             )
             return cursor.fetchone()
 
 
 def create_auth_token(user_id: str) -> str:
-    token = str(uuid.uuid4())
+    token = secrets.token_urlsafe(32)
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                insert into auth_tokens (token, user_id)
-                values (%s, %s)
+                insert into auth_tokens (token_hash, user_id, expires_at)
+                values (%s, %s, now() + make_interval(days => %s))
                 """,
-                (token, user_id),
+                (_hash_auth_token(token), user_id, Config.AUTH_TOKEN_TTL_DAYS),
             )
         connection.commit()
 
     return token
+
+
+def _hash_auth_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def list_levels() -> list[dict]:

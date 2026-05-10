@@ -1,6 +1,7 @@
 def create_app():
-    from flask import Flask
+    from flask import Flask, jsonify
     from flask_cors import CORS
+    from werkzeug.exceptions import RequestEntityTooLarge
 
     from app.config import Config
     from app.db import init_db
@@ -18,6 +19,10 @@ def create_app():
 
     init_db()
     configure_rate_limiting(app)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_payload_too_large(error):
+        return jsonify({"error": "payload_too_large"}), 413
 
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(games_bp, url_prefix="/api")
