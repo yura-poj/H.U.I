@@ -20,6 +20,10 @@ def register():
     username = str(payload.get("username", "")).strip()
     password = str(payload.get("password", ""))
 
+    length_error = _validate_credential_lengths(username, password)
+    if length_error:
+        return jsonify({"error": length_error}), 400
+
     if len(username) < 3:
         return jsonify({"error": "username_too_short"}), 400
 
@@ -52,6 +56,10 @@ def login():
     username = str(payload.get("username", "")).strip()
     password = str(payload.get("password", ""))
 
+    length_error = _validate_credential_lengths(username, password)
+    if length_error:
+        return jsonify({"error": length_error}), 400
+
     user = find_user_by_username(username)
 
     if not user or not check_password_hash(user["password_hash"], password):
@@ -60,3 +68,13 @@ def login():
     token = create_auth_token(user["id"])
 
     return jsonify({"user": serialize_user(user), "token": token})
+
+
+def _validate_credential_lengths(username: str, password: str) -> str | None:
+    if len(username) > current_app.config.get("MAX_USERNAME_LENGTH", 32):
+        return "username_too_long"
+
+    if len(password) > current_app.config.get("MAX_PASSWORD_LENGTH", 128):
+        return "password_too_long"
+
+    return None

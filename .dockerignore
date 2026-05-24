@@ -1,11 +1,13 @@
+.DS_Store
+.env
 .git
 .venv
 __pycache__
 *.pyc
 .pytest_cache
 .ruff_cache
-.DS_Store
 backend/.env
-postgres_data
+frontend/.env
 frontend/node_modules
 frontend/dist
+postgres_data

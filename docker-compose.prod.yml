@@ -1,0 +1,41 @@
+services:
+  backend:
+    restart: unless-stopped
+    environment:
+      FLASK_DEBUG: "0"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://monster_game:monster_game_password@postgres:5432/monster_game}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-true}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-120}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      REGISTRATION_IP_LIMIT: ${REGISTRATION_IP_LIMIT:-3}
+      REGISTRATION_IP_WINDOW_SECONDS: ${REGISTRATION_IP_WINDOW_SECONDS:-86400}
+      MAX_CONTENT_LENGTH: ${MAX_CONTENT_LENGTH:-1048576}
+      MAX_USERNAME_LENGTH: ${MAX_USERNAME_LENGTH:-32}
+      MAX_PASSWORD_LENGTH: ${MAX_PASSWORD_LENGTH:-128}
+      MAX_INSULT_LENGTH: ${MAX_INSULT_LENGTH:-1000}
+      AUTH_TOKEN_TTL_DAYS: ${AUTH_TOKEN_TTL_DAYS:-30}
+    volumes: !reset []
+    command:
+      - gunicorn
+      - --bind=0.0.0.0:5000
+      - --workers=${GUNICORN_WORKERS:-2}
+      - --threads=${GUNICORN_THREADS:-4}
+      - --timeout=${GUNICORN_TIMEOUT:-60}
+      - run:app
+
+  frontend:
+    profiles:
+      - dev-only
+    build:
+      context: ./frontend
+      target: build
+      args:
+        VITE_API_URL: ${PROD_VITE_API_URL:-/api}
+    restart: "no"
+    environment: !reset []
+    ports: !override []
+    volumes: !reset []
+    depends_on: !reset []
+    command: null

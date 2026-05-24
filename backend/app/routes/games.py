@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.auth import current_user_required
 from app.repositories import (
@@ -49,6 +49,9 @@ def submit_insult(user, game_id):
 
     if not text:
         return jsonify({"error": "insult_required"}), 400
+
+    if len(text) > current_app.config.get("MAX_INSULT_LENGTH", 1000):
+        return jsonify({"error": "insult_too_long"}), 400
 
     result = submit_insult_attempt(user, game_id, text)
 

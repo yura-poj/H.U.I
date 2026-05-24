@@ -1,3 +1,6 @@
+import hashlib
+from types import SimpleNamespace
+
 import flask
 import pytest
 
@@ -8,8 +11,281 @@ from app.security import FixedWindowRateLimiter, get_client_ip
 
 def _auth_app():
     app = flask.Flask(__name__)
+    app.config.update(
+        MAX_USERNAME_LENGTH=32,
+        MAX_PASSWORD_LENGTH=128,
+        MAX_INSULT_LENGTH=1000,
+    )
     app.register_blueprint(auth_routes.auth_bp, url_prefix="/api")
     return app
+
+
+def test_register_rejects_username_over_configured_limit(monkeypatch):
+    called = False
+
+    def fake_create_user(username, password_hash, registration_ip):
+        nonlocal called
+        called = True
+        return {
+            "id": "user-1",
+            "username": username,
+            "current_level_id": "level_1",
+            "current_monster_hp": 20,
+            "created_at": None,
+        }
+
+    monkeypatch.setattr(auth_routes, "create_user", fake_create_user)
+
+    app = _auth_app()
+    app.config["MAX_USERNAME_LENGTH"] = 6
+    response = app.test_client().post(
+        "/api/users/register",
+        json={"username": "player7", "password": "secret1"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "username_too_long"}
+    assert called is False
+
+
+def test_register_rejects_password_over_configured_limit(monkeypatch):
+    called = False
+
+    def fake_create_user(username, password_hash, registration_ip):
+        nonlocal called
+        called = True
+        return {
+            "id": "user-1",
+            "username": username,
+            "current_level_id": "level_1",
+            "current_monster_hp": 20,
+            "created_at": None,
+        }
+
+    monkeypatch.setattr(auth_routes, "create_user", fake_create_user)
+
+    app = _auth_app()
+    app.config["MAX_PASSWORD_LENGTH"] = 8
+    response = app.test_client().post(
+        "/api/users/register",
+        json={"username": "player", "password": "secret123"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "password_too_long"}
+    assert called is False
+
+
+def test_submit_insult_rejects_text_over_configured_limit(monkeypatch):
+    import app.auth as auth_module
+    import app.routes.games as games_module
+    from app.routes.games import games_bp
+
+    called = False
+    app = flask.Flask(__name__)
+    app.config["MAX_INSULT_LENGTH"] = 5
+    app.register_blueprint(games_bp, url_prefix="/api")
+
+    monkeypatch.setattr(
+        auth_module,
+        "find_user_by_token",
+        lambda token: {
+            "id": "user-1",
+            "username": "player",
+            "current_level_id": "level_1",
+            "current_monster_hp": 20,
+        },
+    )
+
+    def fake_submit_insult_attempt(user, game_id, text):
+        nonlocal called
+        called = True
+        return {
+            "status": "accepted",
+            "accepted": True,
+            "damage": 1,
+            "score": {
+                "source": "fallback",
+                "toxic": None,
+                "toxicity_score": None,
+                "label": None,
+                "signals": {},
+            },
+            "monster_reply": "ok",
+            "advanced_to_level_id": None,
+            "advanced_to_monster_hp": None,
+            "game": {
+                "id": "game-1",
+                "level_id": "level_1",
+                "status": "active",
+                "monster_name": "Monster 1",
+                "monster_icon": "1.png",
+                "monster_hp": 19,
+                "monster_max_hp": 20,
+                "min_words_per_insult": 1,
+            },
+        }
+
+    monkeypatch.setattr(games_module, "submit_insult_attempt", fake_submit_insult_attempt)
+
+    response = app.test_client().post(
+        "/api/games/game-1/insults",
+        headers={"Authorization": "Bearer token"},
+        json={"text": "too long"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "insult_too_long"}
+    assert called is False
+
+
+def test_create_app_returns_json_for_payload_too_large(monkeypatch):
+    import app as app_factory
+    import app.config as config_module
+    import app.db as db_module
+    import app.security as security_module
+
+    monkeypatch.setattr(config_module.Config, "MAX_CONTENT_LENGTH", 16, raising=False)
+    monkeypatch.setattr(db_module, "init_db", lambda: None)
+    monkeypatch.setattr(security_module, "configure_rate_limiting", lambda app: None)
+
+    response = app_factory.create_app().test_client().post(
+        "/api/users/login",
+        data='{"username":"player","password":"secret1"}',
+        content_type="application/json",
+    )
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": "payload_too_large"}
+
+
+def test_create_auth_token_stores_only_hash_and_expiration(monkeypatch):
+    captured = {}
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, query, params=None):
+            captured["query"] = " ".join(query.split())
+            captured["params"] = params
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+        def commit(self):
+            pass
+
+    monkeypatch.setattr(
+        repositories,
+        "secrets",
+        SimpleNamespace(token_urlsafe=lambda nbytes: "raw-token-value"),
+        raising=False,
+    )
+    monkeypatch.setattr(repositories.Config, "AUTH_TOKEN_TTL_DAYS", 14, raising=False)
+    monkeypatch.setattr(repositories, "get_connection", lambda: FakeConnection())
+
+    token = repositories.create_auth_token("user-1")
+
+    expected_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    assert token == "raw-token-value"
+    assert captured["params"] == (expected_hash, "user-1", 14)
+    assert "insert into auth_tokens (token_hash, user_id, expires_at)" in captured["query"]
+    assert "make_interval(days => %s)" in captured["query"]
+    assert token not in captured["params"]
+
+
+def test_find_user_by_token_hashes_lookup_and_requires_unexpired_token(monkeypatch):
+    captured = {}
+    expected_user = {
+        "id": "user-1",
+        "username": "player",
+        "current_level_id": "level_1",
+        "current_monster_hp": 20,
+        "created_at": None,
+    }
+
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, query, params=None):
+            captured["query"] = " ".join(query.split())
+            captured["params"] = params
+
+        def fetchone(self):
+            if "auth_tokens.token_hash = %s" in captured["query"] and "expires_at > now()" in captured["query"]:
+                return expected_user
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(repositories, "get_connection", lambda: FakeConnection())
+
+    user = repositories.find_user_by_token("raw-token-value")
+
+    assert user == expected_user
+    assert captured["params"] == (
+        hashlib.sha256("raw-token-value".encode("utf-8")).hexdigest(),
+    )
+
+
+def test_find_user_by_token_does_not_match_plaintext_legacy_token(monkeypatch):
+    class FakeCursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def execute(self, query, params=None):
+            self.params = params
+
+        def fetchone(self):
+            if self.params == ("legacy-token",):
+                return {
+                    "id": "user-1",
+                    "username": "player",
+                    "current_level_id": "level_1",
+                    "current_monster_hp": 20,
+                    "created_at": None,
+                }
+            return None
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def cursor(self):
+            return FakeCursor()
+
+    monkeypatch.setattr(repositories, "get_connection", lambda: FakeConnection())
+
+    assert repositories.find_user_by_token("legacy-token") is None
 
 
 def test_register_passes_client_ip_to_user_creation(monkeypatch):

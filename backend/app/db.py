@@ -117,10 +117,90 @@ def init_db() -> None:
             cursor.execute(
                 """
                 create table if not exists auth_tokens (
-                    token text primary key,
+                    token_hash text primary key,
                     user_id text not null references users(id) on delete cascade,
+                    expires_at timestamptz not null,
                     created_at timestamptz not null default now()
                 )
+                """
+            )
+            cursor.execute(
+                """
+                alter table auth_tokens
+                add column if not exists token_hash text
+                """
+            )
+            cursor.execute(
+                """
+                alter table auth_tokens
+                add column if not exists expires_at timestamptz
+                """
+            )
+            cursor.execute(
+                """
+                do $$
+                begin
+                    if exists (
+                        select 1
+                        from information_schema.columns
+                        where table_name = 'auth_tokens'
+                            and column_name = 'token'
+                    ) then
+                        delete from auth_tokens;
+                        alter table auth_tokens
+                        drop constraint if exists auth_tokens_pkey;
+                        alter table auth_tokens
+                        drop column token;
+                    end if;
+                end
+                $$;
+                """
+            )
+            cursor.execute(
+                """
+                delete from auth_tokens
+                where token_hash is null
+                    or expires_at is null
+                """
+            )
+            cursor.execute(
+                """
+                alter table auth_tokens
+                alter column token_hash set not null
+                """
+            )
+            cursor.execute(
+                """
+                alter table auth_tokens
+                alter column expires_at set not null
+                """
+            )
+            cursor.execute(
+                """
+                do $$
+                begin
+                    if not exists (
+                        select 1
+                        from pg_constraint
+                        where conname = 'auth_tokens_pkey'
+                    ) then
+                        alter table auth_tokens
+                        add constraint auth_tokens_pkey primary key (token_hash);
+                    end if;
+                end
+                $$;
+                """
+            )
+            cursor.execute(
+                """
+                create index if not exists auth_tokens_user_id_idx
+                on auth_tokens(user_id)
+                """
+            )
+            cursor.execute(
+                """
+                create index if not exists auth_tokens_expires_at_idx
+                on auth_tokens(expires_at)
                 """
             )
             cursor.execute(
